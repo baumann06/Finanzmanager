@@ -1,7 +1,7 @@
 package com.example.Finanzmanager.controller;
 
 import com.example.Finanzmanager.model.KryptoEintrag;
-import com.example.Finanzmanager.repository.LehrerRepository;
+import com.example.Finanzmanager.repository.KryptoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,10 +11,10 @@ import java.util.List;
 @RequestMapping("/api/lehrer")
 public class KryptoController {
 
-    private final LehrerRepository lehrerRepository;
+    private final KryptoRepository lehrerRepository;
 
     @Autowired
-    public KryptoController(LehrerRepository lehrerRepository) {
+    public KryptoController(KryptoRepository lehrerRepository) {
         this.lehrerRepository = lehrerRepository;
     }
 
