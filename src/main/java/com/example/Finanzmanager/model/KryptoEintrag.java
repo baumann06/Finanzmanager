@@ -1,12 +1,9 @@
 package com.example.Finanzmanager.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.OneToMany;
-import java.util.List;
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 public class KryptoEintrag {
@@ -15,10 +12,13 @@ public class KryptoEintrag {
     private Long id;
 
     private String name;
-    private String fachgebiet;
+    private String symbol;
+    private Double currentPrice;
+    private LocalDateTime timestamp;
+    private String priceHistory; // JSON-String mit Preisdaten
 
-    @OneToMany(mappedBy = "lehrer")
-    private List<Notiz> schueler = new ArrayList<>();
+    @OneToMany(mappedBy = "cryptoEntry", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<UserNotiz> notes = new ArrayList<>();
 
     // Getter und Setter
     public Long getId() {
@@ -37,19 +37,54 @@ public class KryptoEintrag {
         this.name = name;
     }
 
-    public String getFachgebiet() {
-        return fachgebiet;
+    public String getSymbol() {
+        return symbol;
     }
 
-    public void setFachgebiet(String fachgebiet) {
-        this.fachgebiet = fachgebiet;
+    public void setSymbol(String symbol) {
+        this.symbol = symbol;
     }
 
-    public List<Notiz> getSchueler() {
-        return schueler;
+    public Double getCurrentPrice() {
+        return currentPrice;
     }
 
-    public void setSchueler(List<Notiz> schueler) {
-        this.schueler = schueler;
+    public void setCurrentPrice(Double currentPrice) {
+        this.currentPrice = currentPrice;
+    }
+
+    public LocalDateTime getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(LocalDateTime timestamp) {
+        this.timestamp = timestamp;
+    }
+
+    public String getPriceHistory() {
+        return priceHistory;
+    }
+
+    public void setPriceHistory(String priceHistory) {
+        this.priceHistory = priceHistory;
+    }
+
+    public List<UserNotiz> getNotes() {
+        return notes;
+    }
+
+    public void setNotes(List<UserNotiz> notes) {
+        this.notes = notes;
+    }
+
+    // Hilfsmethode zum Hinzufügen von Notizen
+    public void addNote(UserNotiz note) {
+        notes.add(note);
+        note.setCryptoEntry(this);
+    }
+
+    public void removeNote(UserNotiz note) {
+        notes.remove(note);
+        note.setCryptoEntry(null);
     }
 }
