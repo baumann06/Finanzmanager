@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Studentenliste</title>
+</head>
+<body>
+<h1>Studentenliste</h1>
+
+<form action="/add" method="post" th:object="${student}">
+    <input type="text" th:field="*{name}" placeholder="Name eingeben" required />
+    <button type="submit">Hinzufügen</button>
+</form>
+
+<ul>
+    <li th:each="s : ${students}" th:text="${s.name}">Name</li>
+</ul>
+
+<h1>Studentenliste</h1>
+
+<form action="/add" method="post" th:object="${student}">
+    <input type="text" th:field="*{name}" placeholder="Name eingeben" required />
+    <button type="submit">Hinzufügen</button>
+</form>
+
+<ul>
+    <li th:each="s : ${students}" th:text="${s.name}">Name</li>
+</ul>
+</body>
+</html>
