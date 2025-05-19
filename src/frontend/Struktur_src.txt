@@ -1,0 +1,36 @@
+src/
+├── assets/
+│   └── logo.png
+├── components/
+│   ├── finance/
+│   │   ├── TransactionForm.vue       # Formular für Einnahmen/Ausgaben
+│   │   ├── TransactionList.vue       # Liste aller Transaktionen
+│   │   ├── CategoryChart.vue         # Tortendiagramm für Kategorien
+│   │   ├── MonthlyChart.vue          # Liniendiagramm für monatliche Entwicklung
+│   │   └── CurrencyConverter.vue     # Währungsumrechner
+│   ├── crypto/
+│   │   ├── CryptoList.vue            # Liste der Kryptowährungen
+│   │   ├── CryptoDetail.vue          # Detailansicht mit Diagramm
+│   │   ├── CryptoForm.vue            # Hinzufügen einer Kryptowährung
+│   │   └── NotesList.vue             # Notizen zu Kryptowährungen
+│   └── shared/
+│       ├── Navbar.vue                # Navigation
+│       ├── ChartComponent.vue        # Wiederverwendbare Chart-Komponente
+│       └── LoadingSpinner.vue        # Ladeanzeige
+├── router/
+│   └── index.js                      # Vue Router Konfiguration
+├── services/
+│   ├── api.js                        # Axios Konfiguration
+│   ├── financeService.js             # Finanz-API-Aufrufe
+│   └── cryptoService.js              # Krypto-API-Aufrufe
+├── store/
+│   ├── index.js                      # Vuex Store
+│   ├── modules/
+│   │   ├── finance.js                # Finanz-Module
+│   │   └── crypto.js                 # Krypto-Module
+├── views/
+│   ├── HomeView.vue                  # Dashboard-Übersicht
+│   ├── FinanceView.vue               # Finanzübersicht (bereits vorhanden)
+│   └── CryptoView.vue                # Krypto-Übersicht
+├── App.vue                           # Root-Komponente (bereits vorhanden)
+└── main.js                           # Vue Initialisierung
