@@ -1,0 +1,233 @@
+<template>
+  <div>
+    <h2>Krypto Watchlist</h2>
+
+    <div class="add-crypto-section">
+      <h3>Kryptowährung zur Watchlist hinzufügen</h3>
+      <div class="form">
+        <input v-model="newCrypto.symbol" placeholder="Symbol (z.B. btc)" />
+        <input v-model="newCrypto.name" placeholder="Name (z.B. Bitcoin)" />
+        <textarea v-model="newCrypto.notes" placeholder="Notizen"></textarea>
+        <button @click="addToWatchlist">Hinzufügen</button>
+      </div>
+    </div>
+
+    <div v-if="watchlist.length > 0" class="watchlist-section">
+      <h3>Meine Watchlist</h3>
+      <div class="crypto-cards">
+        <div v-for="crypto in watchlist" :key="crypto.id" class="crypto-card">
+          <div class="card-header">
+            <h4>{{ crypto.name }} ({{ crypto.symbol }})</h4>
+            <button @click="removeFromWatchlist(crypto.id)">Entfernen</button>
+          </div>
+          <div v-if="cryptoPrices[crypto.symbol]" class="price-info">
+            <p>Aktueller Preis: {{ formatPrice(cryptoPrices[crypto.symbol].priceUsd) }} USD</p>
+            <p>24h Änderung:
+              <span :class="getChangeClass(cryptoPrices[crypto.symbol].changePercent24Hr)">
+                {{ formatChange(cryptoPrices[crypto.symbol].changePercent24Hr) }}%
+              </span>
+            </p>
+          </div>
+          <div v-else class="price-info">
+            <p>Lade Preisdaten...</p>
+            <button @click="fetchCryptoPrice(crypto.symbol)">Aktualisieren</button>
+          </div>
+          <div class="notes">
+            <p><strong>Notizen:</strong></p>
+            <p>{{ crypto.notes }}</p>
+          </div>
+          <button @click="showHistory(crypto.symbol)">Preisverlauf anzeigen</button>
+          <div v-if="selectedCrypto === crypto.symbol && priceHistory.length > 0" class="price-history">
+            <h4>Preisverlauf der letzten 7 Tage</h4>
+            <div class="chart">
+              <!-- Einfache Darstellung des Preisverlaufs -->
+              <div
+                  v-for="(price, index) in priceHistory"
+                  :key="index"
+                  class="chart-bar"
+                  :style="{ height: calculateBarHeight(price.priceUsd) + 'px' }"
+                  :title="formatDate(price.time) + ': ' + formatPrice(price.priceUsd) + ' USD'"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="empty-state">
+      <p>Deine Watchlist ist leer. Füge eine Kryptowährung hinzu!</p>
+    </div>
+  </div>
+</template>
+
+<script>
+import CryptoService from '../services/CryptoService';
+
+export default {
+  name: 'CryptoModule',
+  data() {
+    return {
+      watchlist: [],
+      newCrypto: {
+        symbol: '',
+        name: '',
+        notes: ''
+      },
+      cryptoPrices: {},
+      selectedCrypto: null,
+      priceHistory: []
+    };
+  },
+  created() {
+    this.fetchWatchlist();
+  },
+  methods: {
+    fetchWatchlist() {
+      CryptoService.getWatchlist()
+          .then(response => {
+            this.watchlist = response.data;
+            // Preise für alle Währungen in der Watchlist abrufen
+            this.watchlist.forEach(crypto => {
+              this.fetchCryptoPrice(crypto.symbol);
+            });
+          })
+          .catch(error => {
+            console.error('Error fetching watchlist:', error);
+          });
+    },
+    addToWatchlist() {
+      if (!this.newCrypto.symbol || !this.newCrypto.name) {
+        alert('Bitte geben Sie mindestens Symbol und Name ein');
+        return;
+      }
+
+      CryptoService.addToWatchlist(this.newCrypto)
+          .then(() => {
+            this.fetchWatchlist();
+            this.newCrypto = {
+              symbol: '',
+              name: '',
+              notes: ''
+            };
+          })
+          .catch(error => {
+            console.error('Error adding to watchlist:', error);
+          });
+    },
+    removeFromWatchlist(id) {
+      CryptoService.removeFromWatchlist(id)
+          .then(() => {
+            this.fetchWatchlist();
+          })
+          .catch(error => {
+            console.error('Error removing from watchlist:', error);
+          });
+    },
+    fetchCryptoPrice(symbol) {
+      CryptoService.getCryptoPrice(symbol)
+          .then(response => {
+            // Aktualisiere den Preis im cryptoPrices-Objekt
+            this.$set(this.cryptoPrices, symbol, response.data.price);
+          })
+          .catch(error => {
+            console.error(`Error fetching price for ${symbol}:`, error);
+          });
+    },
+    showHistory(symbol) {
+      if (this.selectedCrypto === symbol) {
+        // Toggle ausblenden, wenn bereits ausgewählt
+        this.selectedCrypto = null;
+        this.priceHistory = [];
+        return;
+      }
+
+      this.selectedCrypto = symbol;
+
+      CryptoService.getCryptoHistory(symbol)
+          .then(response => {
+            // Begrenze auf die letzten 7 Tage
+            this.priceHistory = response.data.data.slice(-7);
+          })
+          .catch(error => {
+            console.error(`Error fetching history for ${symbol}:`, error);
+          });
+    },
+    formatPrice(price) {
+      return parseFloat(price).toFixed(2);
+    },
+    formatChange(change) {
+      return parseFloat(change).toFixed(2);
+    },
+    formatDate(timestamp) {
+      return new Date(timestamp).toLocaleDateString();
+    },
+    getChangeClass(change) {
+      return parseFloat(change) >= 0 ? 'positive-change' : 'negative-change';
+    },
+    calculateBarHeight(price) {
+      // Einfache Skalierung für die Balken
+      // Dies könnte verbessert werden, um den Mindestwert zu berücksichtigen
+      return parseFloat(price) / 50;
+    }
+  }
+};
+</script>
+
+<style scoped>
+.add-crypto-section {
+  margin-bottom: 20px;
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 400px;
+}
+.watchlist-section {
+  margin-top: 20px;
+}
+.crypto-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+.crypto-card {
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  padding: 15px;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.positive-change {
+  color: green;
+}
+.negative-change {
+  color: red;
+}
+.price-history {
+  margin-top: 15px;
+}
+.chart {
+  display: flex;
+  align-items: flex-end;
+  height: 150px;
+  gap: 5px;
+  border-bottom: 1px solid #ccc;
+  padding-top: 10px;
+}
+.chart-bar {
+  flex: 1;
+  background-color: #4CAF50;
+  min-width: 10px;
+}
+.notes {
+  margin: 10px 0;
+  background-color: #f9f9f9;
+  padding: 10px;
+  border-radius: 3px;
+}
+</style>
