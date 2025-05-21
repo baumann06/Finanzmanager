@@ -10,16 +10,17 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/crypto")
+@RequestMapping("/api/assets")
 @CrossOrigin(origins = "http://localhost:8080")
+
 public class CryptoController {
 
     @Autowired
     private CryptoService cryptoService;
 
     @PostMapping("/watchlist")
-    public ResponseEntity<CryptoWatchlist> addToWatchlist(@RequestBody CryptoWatchlist crypto) {
-        return ResponseEntity.ok(cryptoService.addToWatchlist(crypto));
+    public ResponseEntity<CryptoWatchlist> addToWatchlist(@RequestBody CryptoWatchlist asset) {
+        return ResponseEntity.ok(cryptoService.addToWatchlist(asset));
     }
 
     @GetMapping("/watchlist")
@@ -33,13 +34,31 @@ public class CryptoController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Aktuellen Preis für Krypto oder Aktie holen
+     * Beispiel: /api/assets/price/BTC?type=crypto&market=USD
+     * Beispiel: /api/assets/price/AAPL?type=stock
+     */
     @GetMapping("/price/{symbol}")
-    public ResponseEntity<Map<String, Object>> getCryptoPrice(@PathVariable String symbol) {
-        return ResponseEntity.ok(cryptoService.getCryptoWithCurrentPrice(symbol));
+    public ResponseEntity<Map<String, Object>> getAssetPrice(
+            @PathVariable String symbol,
+            @RequestParam String type,
+            @RequestParam(required = false) String market) {
+
+        return ResponseEntity.ok(cryptoService.getAssetWithCurrentPrice(symbol, type, market));
     }
 
+    /**
+     * Historische Preisdaten für Krypto oder Aktie holen
+     * Beispiel: /api/assets/history/BTC?type=crypto&market=USD
+     * Beispiel: /api/assets/history/AAPL?type=stock
+     */
     @GetMapping("/history/{symbol}")
-    public ResponseEntity<Map<String, Object>> getCryptoHistory(@PathVariable String symbol) {
-        return ResponseEntity.ok(cryptoService.getCryptoPriceHistory(symbol));
+    public ResponseEntity<Map<String, Object>> getAssetHistory(
+            @PathVariable String symbol,
+            @RequestParam String type,
+            @RequestParam(required = false) String market) {
+
+        return ResponseEntity.ok(cryptoService.getAssetPriceHistory(symbol, type, market));
     }
 }

@@ -7,7 +7,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.Map;
 
 @Service
@@ -17,9 +16,7 @@ public class ExternalApiService {
     @Value("${alphavantage.api.key}")
     private String alphaVantageKey;
 
-    @Value("${coincap.api.key}")
-    private String coincapKey;
-
+    // Holen des Wechselkurses zwischen zwei Währungen (Fiat)
     public CurrencyRate getExchangeRate(String fromCurrency, String toCurrency) {
         String url = "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE" +
                 "&from_currency=" + fromCurrency +
@@ -38,19 +35,24 @@ public class ExternalApiService {
         return rate;
     }
 
-    public Map<String, Object> getCryptoData(String symbol) {
-        String url = "https://api.coincap.io/v2/assets/" + symbol.toLowerCase();
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Authorization", "Bearer " + coincapKey);
+    // Tägliche Krypto-Daten abrufen
+    // symbol z.B. "BTC", market z.B. "USD"
+    public Map<String, Object> getCryptoData(String symbol, String market) {
+        String url = "https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_DAILY" +
+                "&symbol=" + symbol.toUpperCase() +
+                "&market=" + market.toUpperCase() +
+                "&apikey=" + alphaVantageKey;
 
         Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-        return (Map<String, Object>) response.get("data");
+        return response;
     }
 
-    public Map<String, Object> getCryptoHistory(String symbol) {
-        String url = "https://api.coincap.io/v2/assets/" + symbol.toLowerCase() + "/history?interval=d1";
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Authorization", "Bearer " + coincapKey);
+    // Tägliche Aktienkurse abrufen
+    // symbol z.B. "AAPL"
+    public Map<String, Object> getStockData(String symbol) {
+        String url = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY" +
+                "&symbol=" + symbol.toUpperCase() +
+                "&apikey=" + alphaVantageKey;
 
         Map<String, Object> response = restTemplate.getForObject(url, Map.class);
         return response;

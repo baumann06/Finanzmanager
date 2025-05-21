@@ -30,20 +30,50 @@ public class CryptoService {
         cryptoWatchlistRepository.deleteById(id);
     }
 
-    public Map<String, Object> getCryptoWithCurrentPrice(String symbol) {
+    /**
+     * Holt aktuelle Preisdaten für das Asset
+     *
+     * @param symbol z.B. "BTC" oder "AAPL"
+     * @param type  "crypto" oder "stock"
+     * @param market nur für Krypto, z.B. "USD"
+     * @return Map mit Watchlist-Daten und Preis-Daten
+     */
+    public Map<String, Object> getAssetWithCurrentPrice(String symbol, String type, String market) {
         Map<String, Object> result = new HashMap<>();
 
-        CryptoWatchlist crypto = cryptoWatchlistRepository.findBySymbol(symbol);
-        Map<String, Object> priceData = externalApiService.getCryptoData(symbol);
+        CryptoWatchlist asset = cryptoWatchlistRepository.findBySymbol(symbol);
+        Map<String, Object> priceData;
 
-        result.put("watchlist", crypto);
+        if ("crypto".equalsIgnoreCase(type)) {
+            priceData = externalApiService.getCryptoData(symbol, market);
+        } else if ("stock".equalsIgnoreCase(type)) {
+            priceData = externalApiService.getStockData(symbol);
+        } else {
+            throw new IllegalArgumentException("Unbekannter Asset-Typ: " + type);
+        }
+
+        result.put("watchlist", asset);
         result.put("price", priceData);
 
         return result;
     }
 
-    public Map<String, Object> getCryptoPriceHistory(String symbol) {
-        return externalApiService.getCryptoHistory(symbol);
+    /**
+     * Holt historische Preisdaten
+     *
+     * @param symbol z.B. "BTC" oder "AAPL"
+     * @param type "crypto" oder "stock"
+     * @param market nur für Krypto (z.B. USD), für Aktien nicht nötig
+     * @return Map mit historischen Kursdaten
+     */
+    public Map<String, Object> getAssetPriceHistory(String symbol, String type, String market) {
+        if ("crypto".equalsIgnoreCase(type)) {
+            // Alpha Vantage hat keine direkte History-API, sondern liefert alles in DIGITAL_CURRENCY_DAILY
+            return externalApiService.getCryptoData(symbol, market);
+        } else if ("stock".equalsIgnoreCase(type)) {
+            return externalApiService.getStockData(symbol);
+        } else {
+            throw new IllegalArgumentException("Unbekannter Asset-Typ: " + type);
+        }
     }
 }
-
