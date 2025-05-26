@@ -20,33 +20,48 @@
             <h4>{{ crypto.name }} ({{ crypto.symbol }})</h4>
             <button @click="removeFromWatchlist(crypto.id)">Entfernen</button>
           </div>
+
           <div v-if="cryptoPrices[crypto.symbol]" class="price-info">
-            <p>Aktueller Preis: {{ formatPrice(cryptoPrices[crypto.symbol].priceUsd) }} USD</p>
-            <p>24h Änderung:
-              <span :class="getChangeClass(cryptoPrices[crypto.symbol].changePercent24Hr)">
-                {{ formatChange(cryptoPrices[crypto.symbol].changePercent24Hr) }}%
-              </span>
-            </p>
+            <div v-if="cryptoPrices[crypto.symbol].success">
+              <p>Aktueller Preis: {{ formatPrice(cryptoPrices[crypto.symbol].priceData.price || cryptoPrices[crypto.symbol].priceData.close) }} USD</p>
+              <p v-if="cryptoPrices[crypto.symbol].priceData.change">24h Änderung:
+                <span :class="getChangeClass(cryptoPrices[crypto.symbol].priceData.change)">
+                  {{ formatChange(cryptoPrices[crypto.symbol].priceData.change) }}
+                </span>
+              </p>
+              <p v-if="cryptoPrices[crypto.symbol].priceData.change_percent">24h Änderung %:
+                <span :class="getChangeClass(cryptoPrices[crypto.symbol].priceData.change_percent)">
+                  {{ formatChangePercent(cryptoPrices[crypto.symbol].priceData.change_percent) }}
+                </span>
+              </p>
+            </div>
+            <div v-else class="error-info">
+              <p>Fehler beim Laden der Preisdaten: {{ cryptoPrices[crypto.symbol].error }}</p>
+              <button @click="fetchCryptoPrice(crypto.symbol)">Erneut versuchen</button>
+            </div>
           </div>
+
           <div v-else class="price-info">
             <p>Lade Preisdaten...</p>
             <button @click="fetchCryptoPrice(crypto.symbol)">Aktualisieren</button>
           </div>
+
           <div class="notes">
             <p><strong>Notizen:</strong></p>
-            <p>{{ crypto.notes }}</p>
+            <p>{{ crypto.notes || 'Keine Notizen' }}</p>
           </div>
+
           <button @click="showHistory(crypto.symbol)">Preisverlauf anzeigen</button>
+
           <div v-if="selectedCrypto === crypto.symbol && priceHistory.length > 0" class="price-history">
-            <h4>Preisverlauf der letzten 7 Tage</h4>
+            <h4>Preisverlauf</h4>
             <div class="chart">
-              <!-- Einfache Darstellung des Preisverlaufs -->
               <div
                   v-for="(price, index) in priceHistory"
                   :key="index"
                   class="chart-bar"
-                  :style="{ height: calculateBarHeight(price.priceUsd) + 'px' }"
-                  :title="formatDate(price.time) + ': ' + formatPrice(price.priceUsd) + ' USD'"
+                  :style="{ height: calculateBarHeight(price.close || price.price) + 'px' }"
+                  :title="price.date + ': ' + formatPrice(price.close || price.price) + ' USD'"
               ></div>
             </div>
           </div>
@@ -86,13 +101,13 @@ export default {
       CryptoService.getWatchlist()
           .then(response => {
             this.watchlist = response.data;
-            // Preise für alle Währungen in der Watchlist abrufen
             this.watchlist.forEach(crypto => {
               this.fetchCryptoPrice(crypto.symbol);
             });
           })
           .catch(error => {
             console.error('Error fetching watchlist:', error);
+            alert('Fehler beim Laden der Watchlist: ' + error.message);
           });
     },
     addToWatchlist() {
@@ -104,38 +119,45 @@ export default {
       CryptoService.addToWatchlist(this.newCrypto)
           .then(() => {
             this.fetchWatchlist();
-            this.newCrypto = {
-              symbol: '',
-              name: '',
-              notes: ''
-            };
+            this.newCrypto = { symbol: '', name: '', notes: '' };
           })
           .catch(error => {
             console.error('Error adding to watchlist:', error);
+            alert('Fehler beim Hinzufügen zur Watchlist: ' + error.message);
           });
     },
     removeFromWatchlist(id) {
       CryptoService.removeFromWatchlist(id)
-          .then(() => {
-            this.fetchWatchlist();
-          })
+          .then(() => this.fetchWatchlist())
           .catch(error => {
             console.error('Error removing from watchlist:', error);
+            alert('Fehler beim Entfernen aus der Watchlist: ' + error.message);
           });
     },
     fetchCryptoPrice(symbol) {
       CryptoService.getCryptoPrice(symbol)
           .then(response => {
-            // Aktualisiere den Preis im cryptoPrices-Objekt
-            this.$set(this.cryptoPrices, symbol, response.data.price);
+            this.cryptoPrices = {
+              ...this.cryptoPrices,
+              [symbol]: response.data
+            };
           })
+
           .catch(error => {
             console.error(`Error fetching price for ${symbol}:`, error);
+            const errorMessage =
+                error.response && error.response.data && error.response.data.error
+                    ? error.response.data.error
+                    : error.message;
+
+            this.$set(this.cryptoPrices, symbol, {
+              success: false,
+              error: errorMessage
+            });
           });
     },
     showHistory(symbol) {
       if (this.selectedCrypto === symbol) {
-        // Toggle ausblenden, wenn bereits ausgewählt
         this.selectedCrypto = null;
         this.priceHistory = [];
         return;
@@ -145,29 +167,54 @@ export default {
 
       CryptoService.getCryptoHistory(symbol)
           .then(response => {
-            // Begrenze auf die letzten 7 Tage
-            this.priceHistory = response.data.data.slice(-7);
+            if (response.data.success && response.data.historyData) {
+              const timeSeries = response.data.historyData['Time Series (Digital Currency Daily)'];
+              if (timeSeries) {
+                this.priceHistory = Object.keys(timeSeries)
+                    .slice(0, 7)
+                    .map(date => ({
+                      date,
+                      close: timeSeries[date]['4a. close (USD)'],
+                      price: timeSeries[date]['4a. close (USD)']
+                    }));
+              } else {
+                console.warn('Keine Time Series Daten gefunden');
+                this.priceHistory = [];
+              }
+            } else {
+              console.error('Fehler in API Response:', response.data);
+              this.priceHistory = [];
+            }
           })
           .catch(error => {
             console.error(`Error fetching history for ${symbol}:`, error);
+            alert('Fehler beim Laden der Kursverlaufsdaten: ' + error.message);
+            this.priceHistory = [];
           });
     },
     formatPrice(price) {
+      if (!price) return '0.00';
       return parseFloat(price).toFixed(2);
     },
     formatChange(change) {
-      return parseFloat(change).toFixed(2);
+      if (!change) return '0.00';
+      const cleanChange = change.toString().replace('%', '');
+      return parseFloat(cleanChange).toFixed(2);
     },
-    formatDate(timestamp) {
-      return new Date(timestamp).toLocaleDateString();
+    formatChangePercent(changePercent) {
+      if (!changePercent) return '0.00%';
+      return changePercent.toString().includes('%')
+          ? changePercent
+          : parseFloat(changePercent).toFixed(2) + '%';
     },
     getChangeClass(change) {
-      return parseFloat(change) >= 0 ? 'positive-change' : 'negative-change';
+      if (!change) return '';
+      const numericChange = parseFloat(change.toString().replace('%', ''));
+      return numericChange >= 0 ? 'positive-change' : 'negative-change';
     },
     calculateBarHeight(price) {
-      // Einfache Skalierung für die Balken
-      // Dies könnte verbessert werden, um den Mindestwert zu berücksichtigen
-      return parseFloat(price) / 50;
+      if (!price) return 10;
+      return Math.max(parseFloat(price) / 1000, 10);
     }
   }
 };
@@ -221,7 +268,7 @@ export default {
 }
 .chart-bar {
   flex: 1;
-  background-color: #4CAF50;
+  background-color: #4caf50;
   min-width: 10px;
 }
 .notes {
@@ -229,5 +276,20 @@ export default {
   background-color: #f9f9f9;
   padding: 10px;
   border-radius: 3px;
+}
+.error-info {
+  color: red;
+}
+.error-info button {
+  background-color: #ff6b6b;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-top: 5px;
+}
+.error-info button:hover {
+  background-color: #ff5252;
 }
 </style>
