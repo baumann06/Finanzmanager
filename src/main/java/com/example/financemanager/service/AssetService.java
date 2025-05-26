@@ -32,9 +32,9 @@ public class AssetService {
 
     /**
      * Holt aktuelle Preisdaten für das Asset
-     * @param symbol z.B. "BTC" oder "AAPL"
+     * @param symbol z.B. "bitcoin" oder "AAPL"
      * @param type "crypto" oder "stock"
-     * @param market nur für Krypto, z.B. "USD"
+     * @param market nur für Krypto, z.B. "usd"
      * @return Map mit Watchlist-Daten und aktuellen Preis-Daten
      */
     public Map<String, Object> getAssetWithCurrentPrice(String symbol, String type, String market) {
@@ -48,13 +48,14 @@ public class AssetService {
 
         try {
             if ("crypto".equalsIgnoreCase(type)) {
-                // Für Krypto verwenden wir DIGITAL_CURRENCY_DAILY
-                apiResponse = externalApiService.getCryptoData(symbol, market != null ? market : "USD");
+                // CoinGecko: aktuelle Krypto-Daten (intraday oder Tagesdaten)
+                apiResponse = externalApiService.getCryptoIntradayData(symbol, market != null ? market : "usd");
+                // Annahme: extractLatestPrice ist in ExternalApiService entsprechend implementiert
                 priceData = externalApiService.extractLatestPrice(apiResponse, "crypto");
             } else if ("stock".equalsIgnoreCase(type)) {
-                // Für Aktien verwenden wir GLOBAL_QUOTE für aktuelle Preise
-                apiResponse = externalApiService.getStockQuote(symbol);
-                priceData = externalApiService.extractLatestPrice(apiResponse, "quote");
+                // Twelve Data: aktueller Aktienkurs via time_series endpoint (interval 1min oder 1day)
+                apiResponse = externalApiService.getStockIntradayData(symbol, "1min");
+                priceData = externalApiService.extractLatestPrice(apiResponse, "stock");
             } else {
                 throw new IllegalArgumentException("Unbekannter Asset-Typ: " + type + ". Erlaubt sind: 'crypto' oder 'stock'");
             }
@@ -75,9 +76,9 @@ public class AssetService {
 
     /**
      * Holt historische Preisdaten
-     * @param symbol z.B. "BTC" oder "AAPL"
+     * @param symbol z.B. "bitcoin" oder "AAPL"
      * @param type "crypto" oder "stock"
-     * @param market nur für Krypto (z.B. USD)
+     * @param market nur für Krypto (z.B. usd)
      * @param period "daily" oder "intraday"
      * @param interval nur für intraday: "1min", "5min", "15min", "30min", "60min"
      * @return Map mit historischen Kursdaten
@@ -90,17 +91,19 @@ public class AssetService {
 
             if ("crypto".equalsIgnoreCase(type)) {
                 if ("intraday".equalsIgnoreCase(period)) {
-                    apiResponse = externalApiService.getCryptoIntradayData(symbol, market != null ? market : "USD", interval != null ? interval : "5min");
+                    // CoinGecko Intraday-Daten (stündlich)
+                    apiResponse = externalApiService.getCryptoIntradayData(symbol, market != null ? market : "usd");
                 } else {
-                    // Default: daily data
-                    apiResponse = externalApiService.getCryptoData(symbol, market != null ? market : "USD");
+                    // CoinGecko Tagesdaten (30 Tage)
+                    apiResponse = externalApiService.getCryptoDailyData(symbol, market != null ? market : "usd");
                 }
             } else if ("stock".equalsIgnoreCase(type)) {
                 if ("intraday".equalsIgnoreCase(period)) {
-                    apiResponse = externalApiService.getStockIntradayData(symbol, interval != null ? interval : "5min", "compact");
+                    // Twelve Data Intraday (1min bis 60min Intervall)
+                    apiResponse = externalApiService.getStockIntradayData(symbol, interval != null ? interval : "5min");
                 } else {
-                    // Default: daily data
-                    apiResponse = externalApiService.getStockData(symbol);
+                    // Twelve Data Tagesdaten
+                    apiResponse = externalApiService.getStockDailyData(symbol);
                 }
             } else {
                 throw new IllegalArgumentException("Unbekannter Asset-Typ: " + type + ". Erlaubt sind: 'crypto' oder 'stock'");
@@ -164,12 +167,22 @@ public class AssetService {
 
         try {
             if ("crypto".equalsIgnoreCase(type)) {
-                Map<String, Object> timeSeries = (Map<String, Object>) apiResponse.get("Time Series (Digital Currency Daily)");
-                // Formatierung für Chart-Bibliothek (z.B. Chart.js)
-                // Implementierung je nach Frontend-Anforderungen
+                // CoinGecko liefert meist Preise als Liste von Timestamp/Price-Paaren in "prices"
+                List<List<Object>> prices = (List<List<Object>>) apiResponse.get("prices");
+                // Beispiel: Umwandlung in Map<Timestamp, Price>
+                Map<Long, Double> formattedPrices = new HashMap<>();
+                for (List<Object> entry : prices) {
+                    Long timestamp = ((Number) entry.get(0)).longValue();
+                    Double price = ((Number) entry.get(1)).doubleValue();
+                    formattedPrices.put(timestamp, price);
+                }
+                chartData.put("prices", formattedPrices);
+
             } else if ("stock".equalsIgnoreCase(type)) {
-                Map<String, Object> timeSeries = (Map<String, Object>) apiResponse.get("Time Series (Daily)");
-                // Formatierung für Chart-Bibliothek
+                // Twelve Data liefert "values" als Liste von Tages- oder Intraday-Daten
+                List<Map<String, String>> values = (List<Map<String, String>>) apiResponse.get("values");
+                // Hier könnte man Daten in ein passendes Format bringen
+                chartData.put("values", values);
             }
         } catch (Exception e) {
             chartData.put("error", "Fehler beim Formatieren der Chart-Daten: " + e.getMessage());

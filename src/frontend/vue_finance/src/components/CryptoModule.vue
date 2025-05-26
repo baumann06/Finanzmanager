@@ -1,59 +1,69 @@
 <template>
   <div>
-    <h2>Krypto Watchlist</h2>
+    <h2>Watchlist</h2>
 
-    <div class="add-crypto-section">
-      <h3>Kryptowährung zur Watchlist hinzufügen</h3>
+    <div class="add-asset-section">
+      <h3>Asset zur Watchlist hinzufügen</h3>
       <div class="form">
-        <input v-model="newCrypto.symbol" placeholder="Symbol (z.B. btc)" />
-        <input v-model="newCrypto.name" placeholder="Name (z.B. Bitcoin)" />
-        <textarea v-model="newCrypto.notes" placeholder="Notizen"></textarea>
+        <input v-model="newAsset.symbol" placeholder="Symbol (z.B. BTC oder AAPL)" />
+        <input v-model="newAsset.name" placeholder="Name (z.B. Bitcoin oder Apple)" />
+
+        <!-- Dropdown nur anzeigen, wenn symbol und name gesetzt sind -->
+        <div v-if="newAsset.symbol && newAsset.name" style="margin: 10px 0;">
+          <label for="assetType">Typ wählen:</label>
+          <select id="assetType" v-model="newAsset.type">
+            <option value="crypto">Kryptowährung</option>
+            <option value="stock">Aktie</option>
+          </select>
+        </div>
+
+        <textarea v-model="newAsset.notes" placeholder="Notizen"></textarea>
         <button @click="addToWatchlist">Hinzufügen</button>
       </div>
     </div>
 
     <div v-if="watchlist.length > 0" class="watchlist-section">
       <h3>Meine Watchlist</h3>
-      <div class="crypto-cards">
-        <div v-for="crypto in watchlist" :key="crypto.id" class="crypto-card">
+      <div class="asset-cards">
+        <div v-for="asset in watchlist" :key="asset.id" class="asset-card">
           <div class="card-header">
-            <h4>{{ crypto.name }} ({{ crypto.symbol }})</h4>
-            <button @click="removeFromWatchlist(crypto.id)">Entfernen</button>
+            <h4>{{ asset.name }} ({{ asset.symbol }}) - {{ asset.type === 'crypto' ? 'Krypto' : 'Aktie' }}</h4>
+            <button @click="removeFromWatchlist(asset.id)">Entfernen</button>
           </div>
 
-          <div v-if="cryptoPrices[crypto.symbol]" class="price-info">
-            <div v-if="cryptoPrices[crypto.symbol].success">
-              <p>Aktueller Preis: {{ formatPrice(cryptoPrices[crypto.symbol].priceData.price || cryptoPrices[crypto.symbol].priceData.close) }} USD</p>
-              <p v-if="cryptoPrices[crypto.symbol].priceData.change">24h Änderung:
-                <span :class="getChangeClass(cryptoPrices[crypto.symbol].priceData.change)">
-                  {{ formatChange(cryptoPrices[crypto.symbol].priceData.change) }}
+          <div v-if="assetPrices[asset.symbol]" class="price-info">
+            <div v-if="assetPrices[asset.symbol].success">
+              <p>Aktueller Preis: {{ formatPrice(assetPrices[asset.symbol].price) }} USD</p>
+              <p v-if="assetPrices[asset.symbol].change !== undefined">24h Änderung:
+                <span :class="getChangeClass(assetPrices[asset.symbol].change)">
+                  {{ formatChange(assetPrices[asset.symbol].change) }}
                 </span>
               </p>
-              <p v-if="cryptoPrices[crypto.symbol].priceData.change_percent">24h Änderung %:
-                <span :class="getChangeClass(cryptoPrices[crypto.symbol].priceData.change_percent)">
-                  {{ formatChangePercent(cryptoPrices[crypto.symbol].priceData.change_percent) }}
+              <p v-if="assetPrices[asset.symbol].change_percent !== undefined">24h Änderung %:
+                <span :class="getChangeClass(assetPrices[asset.symbol].change_percent)">
+                  {{ formatChangePercent(assetPrices[asset.symbol].change_percent) }}
                 </span>
               </p>
             </div>
             <div v-else class="error-info">
-              <p>Fehler beim Laden der Preisdaten: {{ cryptoPrices[crypto.symbol].error }}</p>
-              <button @click="fetchCryptoPrice(crypto.symbol)">Erneut versuchen</button>
+              <p>Fehler beim Laden der Preisdaten: {{ assetPrices[asset.symbol].error }}</p>
+              <button @click="fetchAssetPrice(asset)">Erneut versuchen</button>
             </div>
           </div>
 
           <div v-else class="price-info">
             <p>Lade Preisdaten...</p>
-            <button @click="fetchCryptoPrice(crypto.symbol)">Aktualisieren</button>
+            <button @click="fetchAssetPrice(asset)">Aktualisieren</button>
           </div>
 
           <div class="notes">
             <p><strong>Notizen:</strong></p>
-            <p>{{ crypto.notes || 'Keine Notizen' }}</p>
+            <p>{{ asset.notes || 'Keine Notizen' }}</p>
           </div>
 
-          <button @click="showHistory(crypto.symbol)">Preisverlauf anzeigen</button>
+          <button @click="showHistory(asset)">Preisverlauf anzeigen</button>
 
-          <div v-if="selectedCrypto === crypto.symbol && priceHistory.length > 0" class="price-history">
+          <div v-if="selectedAsset && selectedAsset.symbol === asset.symbol && priceHistory.length > 0" class="price-history">
             <h4>Preisverlauf</h4>
             <div class="chart">
               <div
@@ -70,26 +80,27 @@
     </div>
 
     <div v-else class="empty-state">
-      <p>Deine Watchlist ist leer. Füge eine Kryptowährung hinzu!</p>
+      <p>Deine Watchlist ist leer. Füge ein Asset hinzu!</p>
     </div>
   </div>
 </template>
 
 <script>
-import CryptoService from '../services/CryptoService';
+import CryptoService from '../services/CryptoService'; // Dein Service (erweitern um Aktien-Methoden)
 
 export default {
-  name: 'CryptoModule',
+  name: 'WatchlistModule',
   data() {
     return {
       watchlist: [],
-      newCrypto: {
+      newAsset: {
         symbol: '',
         name: '',
+        type: 'crypto',  // Default auf Krypto
         notes: ''
       },
-      cryptoPrices: {},
-      selectedCrypto: null,
+      assetPrices: {},  // { symbol: { success: true/false, price: x, change: y, change_percent: z } }
+      selectedAsset: null,
       priceHistory: []
     };
   },
@@ -101,28 +112,28 @@ export default {
       CryptoService.getWatchlist()
           .then(response => {
             this.watchlist = response.data;
-            this.watchlist.forEach(crypto => {
-              this.fetchCryptoPrice(crypto.symbol);
+            this.watchlist.forEach(asset => {
+              this.fetchAssetPrice(asset);
             });
           })
           .catch(error => {
-            console.error('Error fetching watchlist:', error);
+            console.error('Fehler beim Laden der Watchlist:', error);
             alert('Fehler beim Laden der Watchlist: ' + error.message);
           });
     },
     addToWatchlist() {
-      if (!this.newCrypto.symbol || !this.newCrypto.name) {
-        alert('Bitte geben Sie mindestens Symbol und Name ein');
+      if (!this.newAsset.symbol || !this.newAsset.name) {
+        alert('Bitte geben Sie Symbol und Name ein.');
         return;
       }
 
-      CryptoService.addToWatchlist(this.newCrypto)
+      CryptoService.addToWatchlist(this.newAsset)
           .then(() => {
             this.fetchWatchlist();
-            this.newCrypto = { symbol: '', name: '', notes: '' };
+            this.newAsset = { symbol: '', name: '', type: 'crypto', notes: '' };
           })
           .catch(error => {
-            console.error('Error adding to watchlist:', error);
+            console.error('Fehler beim Hinzufügen:', error);
             alert('Fehler beim Hinzufügen zur Watchlist: ' + error.message);
           });
     },
@@ -130,67 +141,111 @@ export default {
       CryptoService.removeFromWatchlist(id)
           .then(() => this.fetchWatchlist())
           .catch(error => {
-            console.error('Error removing from watchlist:', error);
+            console.error('Fehler beim Entfernen:', error);
             alert('Fehler beim Entfernen aus der Watchlist: ' + error.message);
           });
     },
-    fetchCryptoPrice(symbol) {
-      CryptoService.getCryptoPrice(symbol)
-          .then(response => {
-            this.cryptoPrices = {
-              ...this.cryptoPrices,
-              [symbol]: response.data
-            };
-          })
-
-          .catch(error => {
-            console.error(`Error fetching price for ${symbol}:`, error);
-            const errorMessage =
-                error.response && error.response.data && error.response.data.error
-                    ? error.response.data.error
-                    : error.message;
-
-            this.$set(this.cryptoPrices, symbol, {
-              success: false,
-              error: errorMessage
+    fetchAssetPrice(asset) {
+      if (asset.type === 'crypto') {
+        CryptoService.getCryptoPrice(asset.symbol)
+            .then(response => {
+              // response.data = { success: true, priceData: {...} }
+              const priceData = response.data.priceData || {};
+              this.assetPrices = {
+                ...this.assetPrices,
+                [asset.symbol]: {
+                  success: response.data.success,
+                  price: priceData.price || priceData.close,
+                  change: priceData.change,
+                  change_percent: priceData.change_percent
+                }
+              };
+            })
+            .catch(error => {
+              console.error(`Fehler bei Krypto-Preis für ${asset.symbol}:`, error);
+              this.$set(this.assetPrices, asset.symbol, { success: false, error: error.message });
             });
-          });
+      } else if (asset.type === 'stock') {
+        CryptoService.getStockPrice(asset.symbol)
+            .then(response => {
+              // response.data = { success: true, priceData: {...} }
+              const priceData = response.data.priceData || {};
+              this.assetPrices = {
+                ...this.assetPrices,
+                [asset.symbol]: {
+                  success: response.data.success,
+                  price: priceData.price || priceData.close,
+                  change: priceData.change,
+                  change_percent: priceData.change_percent
+                }
+              };
+            })
+            .catch(error => {
+              console.error(`Fehler bei Aktien-Preis für ${asset.symbol}:`, error);
+              this.$set(this.assetPrices, asset.symbol, { success: false, error: error.message });
+            });
+      }
     },
-    showHistory(symbol) {
-      if (this.selectedCrypto === symbol) {
-        this.selectedCrypto = null;
+    showHistory(asset) {
+      if (this.selectedAsset && this.selectedAsset.symbol === asset.symbol) {
+        this.selectedAsset = null;
         this.priceHistory = [];
         return;
       }
 
-      this.selectedCrypto = symbol;
+      this.selectedAsset = asset;
 
-      CryptoService.getCryptoHistory(symbol)
-          .then(response => {
-            if (response.data.success && response.data.historyData) {
-              const timeSeries = response.data.historyData['Time Series (Digital Currency Daily)'];
-              if (timeSeries) {
-                this.priceHistory = Object.keys(timeSeries)
-                    .slice(0, 7)
-                    .map(date => ({
-                      date,
-                      close: timeSeries[date]['4a. close (USD)'],
-                      price: timeSeries[date]['4a. close (USD)']
-                    }));
+      if (asset.type === 'crypto') {
+        CryptoService.getCryptoHistory(asset.symbol)
+            .then(response => {
+              if (response.data.success && response.data.historyData) {
+                const timeSeries = response.data.historyData['Time Series (Digital Currency Daily)'];
+                if (timeSeries) {
+                  this.priceHistory = Object.keys(timeSeries)
+                      .slice(0, 7)
+                      .map(date => ({
+                        date,
+                        close: timeSeries[date]['4a. close (USD)'],
+                        price: timeSeries[date]['4a. close (USD)']
+                      }));
+                } else {
+                  this.priceHistory = [];
+                }
               } else {
-                console.warn('Keine Time Series Daten gefunden');
                 this.priceHistory = [];
               }
-            } else {
-              console.error('Fehler in API Response:', response.data);
+            })
+            .catch(error => {
+              console.error(`Fehler beim Laden History Krypto für ${asset.symbol}:`, error);
+              alert('Fehler beim Laden der Kursverlaufsdaten: ' + error.message);
               this.priceHistory = [];
-            }
-          })
-          .catch(error => {
-            console.error(`Error fetching history for ${symbol}:`, error);
-            alert('Fehler beim Laden der Kursverlaufsdaten: ' + error.message);
-            this.priceHistory = [];
-          });
+            });
+      } else if (asset.type === 'stock') {
+        CryptoService.getStockHistory(asset.symbol)
+            .then(response => {
+              if (response.data.success && response.data.historyData) {
+                const timeSeries = response.data.historyData['Time Series (Daily)'];
+                if (timeSeries) {
+                  this.priceHistory = Object.keys(timeSeries)
+                      .slice(0, 7)
+                      .map(date => ({
+                        date,
+                        close: timeSeries[date]['4. close'],
+                        price: timeSeries[date]['4. close']
+                      }));
+                } else {
+                  this.priceHistory = [];
+                }
+              } else {
+                this.priceHistory = [];
+              }
+            })
+            .catch(error => {
+              console.error(`Fehler beim Laden History Aktie für ${asset.symbol}:`, error);
+              alert('Fehler beim Laden der Kursverlaufsdaten: ' + error.message);
+              this.priceHistory = [];
+            });
+      }
     },
     formatPrice(price) {
       if (!price) return '0.00';

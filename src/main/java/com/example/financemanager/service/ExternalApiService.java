@@ -5,235 +5,169 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.RestClientException;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class ExternalApiService {
+
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Value("${alphavantage.api.key:J23ZY20YSGXA91CU}")
-    private String alphaVantageKey;
+    // Twelve Data API-Key (für Aktien & Intraday-Daten)
+    @Value("${twelvedata.api.key}")
+    private String twelveDataApiKey;
 
     /**
-     * Holt Wechselkurs zwischen zwei Fiat-Währungen
+     * Wechselkurs zwischen zwei Fiat-Währungen mit ExchangeRate.host
      */
     public CurrencyRate getExchangeRate(String fromCurrency, String toCurrency) {
-        String url = "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE" +
-                "&from_currency=" + fromCurrency +
-                "&to_currency=" + toCurrency +
-                "&apikey=" + alphaVantageKey;
+        String url = "https://api.exchangerate.host/latest?base=" + fromCurrency.toUpperCase() +
+                "&symbols=" + toCurrency.toUpperCase();
 
         try {
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-            Map<String, String> exchangeRate = (Map<String, String>) response.get("Realtime Currency Exchange Rate");
-
-            if (exchangeRate == null) {
-                throw new RuntimeException("Keine Wechselkursdaten gefunden");
+            if (response == null || !(Boolean)response.get("success")) {
+                throw new RuntimeException("Fehler bei ExchangeRate.host API");
+            }
+            Map<String, Double> rates = (Map<String, Double>) response.get("rates");
+            Double rate = rates.get(toCurrency.toUpperCase());
+            if (rate == null) {
+                throw new RuntimeException("Wechselkurs nicht gefunden");
             }
 
-            CurrencyRate rate = new CurrencyRate();
-            rate.setFromCurrency(fromCurrency);
-            rate.setToCurrency(toCurrency);
-            rate.setRate(new BigDecimal(exchangeRate.get("5. Exchange Rate")));
-            rate.setTimestamp(LocalDateTime.now());
+            CurrencyRate currencyRate = new CurrencyRate();
+            currencyRate.setFromCurrency(fromCurrency.toUpperCase());
+            currencyRate.setToCurrency(toCurrency.toUpperCase());
+            currencyRate.setRate(BigDecimal.valueOf(rate));
+            currencyRate.setTimestamp(LocalDateTime.now());
 
-            return rate;
+            return currencyRate;
         } catch (RestClientException e) {
-            throw new RuntimeException("Fehler beim Abrufen der Wechselkursdaten: " + e.getMessage());
+            throw new RuntimeException("Fehler bei Wechselkurs-Abfrage: " + e.getMessage());
         }
     }
 
     /**
-     * Holt aktuelle Kryptowährungs-Daten (Tageswerte)
-     * @param symbol Krypto-Symbol (z.B. "BTC")
-     * @param market Markt-Währung (z.B. "USD")
+     * Krypto-Tagesdaten von CoinGecko
+     * @param coinId z.B. "bitcoin", "ethereum"
+     * @param vsCurrency z.B. "usd"
      */
-    public Map<String, Object> getCryptoData(String symbol, String market) {
-        String url = "https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_DAILY" +
-                "&symbol=" + symbol.toUpperCase() +
-                "&market=" + market.toUpperCase() +
-                "&apikey=" + alphaVantageKey;
+    public Map<String, Object> getCryptoDailyData(String coinId, String vsCurrency) {
+        String url = "https://api.coingecko.com/api/v3/coins/" + coinId.toLowerCase() + "/market_chart" +
+                "?vs_currency=" + vsCurrency.toLowerCase() + "&days=30&interval=daily";
 
         try {
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-
-            if (response.containsKey("Error Message")) {
-                throw new RuntimeException("API Fehler: " + response.get("Error Message"));
-            }
-
-            if (response.containsKey("Note")) {
-                throw new RuntimeException("API Limit erreicht: " + response.get("Note"));
-            }
-
             return response;
         } catch (RestClientException e) {
-            throw new RuntimeException("Fehler beim Abrufen der Krypto-Daten: " + e.getMessage());
+            throw new RuntimeException("Fehler bei CoinGecko Krypto-Daten: " + e.getMessage());
         }
     }
 
     /**
-     * Holt Krypto-Intraday-Daten (für aktuellere Preise)
-     * @param symbol Krypto-Symbol (z.B. "BTC")
-     * @param market Markt-Währung (z.B. "USD")
-     * @param interval Zeitintervall (1min, 5min, 15min, 30min, 60min)
+     * Krypto-Intraday-Daten von CoinGecko (für aktuellere Preise)
+     * @param coinId z.B. "bitcoin"
+     * @param vsCurrency z.B. "usd"
      */
-    public Map<String, Object> getCryptoIntradayData(String symbol, String market, String interval) {
-        String url = "https://www.alphavantage.co/query?function=CRYPTO_INTRADAY" +
-                "&symbol=" + symbol.toUpperCase() +
-                "&market=" + market.toUpperCase() +
+    public Map<String, Object> getCryptoIntradayData(String coinId, String vsCurrency) {
+        // CoinGecko gibt Intraday-Daten nur über market_chart mit kurzen Intervallen
+        String url = "https://api.coingecko.com/api/v3/coins/" + coinId.toLowerCase() + "/market_chart" +
+                "?vs_currency=" + vsCurrency.toLowerCase() + "&days=1&interval=hourly";
+
+        try {
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            return response;
+        } catch (RestClientException e) {
+            throw new RuntimeException("Fehler bei CoinGecko Intraday-Daten: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Aktien-Tagesdaten von Twelve Data
+     * @param symbol z.B. "AAPL"
+     */
+    public Map<String, Object> getStockDailyData(String symbol) {
+        String url = "https://api.twelvedata.com/time_series?symbol=" + symbol.toUpperCase() + "&interval=1day&apikey=" + twelveDataApiKey;
+
+        try {
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            if (response == null || response.containsKey("code")) {
+                throw new RuntimeException("Twelve Data API Fehler: " + response);
+            }
+            return response;
+        } catch (RestClientException e) {
+            throw new RuntimeException("Fehler bei Twelve Data Aktien-Daten: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Aktien Intraday-Daten von Twelve Data
+     * @param symbol z.B. "AAPL"
+     * @param interval z.B. "1min", "5min", "15min", "30min", "60min"
+     */
+    public Map<String, Object> getStockIntradayData(String symbol, String interval) {
+        String url = "https://api.twelvedata.com/time_series?symbol=" + symbol.toUpperCase() +
                 "&interval=" + interval +
-                "&apikey=" + alphaVantageKey;
+                "&apikey=" + twelveDataApiKey;
 
         try {
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-
-            if (response.containsKey("Error Message")) {
-                throw new RuntimeException("API Fehler: " + response.get("Error Message"));
+            if (response == null || response.containsKey("code")) {
+                throw new RuntimeException("Twelve Data API Fehler: " + response);
             }
-
             return response;
         } catch (RestClientException e) {
-            throw new RuntimeException("Fehler beim Abrufen der Krypto-Intraday-Daten: " + e.getMessage());
+            throw new RuntimeException("Fehler bei Twelve Data Intraday-Daten: " + e.getMessage());
         }
     }
 
-    /**
-     * Holt tägliche Aktienkurse
-     * @param symbol Aktien-Symbol (z.B. "AAPL", "IBM")
-     */
-    public Map<String, Object> getStockData(String symbol) {
-        String url = "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY" +
-                "&symbol=" + symbol.toUpperCase() +
-                "&apikey=" + alphaVantageKey;
-
-        try {
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-
-            if (response.containsKey("Error Message")) {
-                throw new RuntimeException("API Fehler: " + response.get("Error Message"));
-            }
-
-            if (response.containsKey("Note")) {
-                throw new RuntimeException("API Limit erreicht: " + response.get("Note"));
-            }
-
-            return response;
-        } catch (RestClientException e) {
-            throw new RuntimeException("Fehler beim Abrufen der Aktien-Daten: " + e.getMessage());
-        }
-    }
 
     /**
-     * Holt Intraday-Aktienkurse (für aktuellere Preise)
-     * @param symbol Aktien-Symbol (z.B. "AAPL", "IBM")
-     * @param interval Zeitintervall (1min, 5min, 15min, 30min, 60min)
-     * @param outputsize compact oder full
+     * Extrahiert den letzten verfügbaren Preis aus der API-Antwort
+     * @param apiResponse Antwort der API
+     * @param type "crypto" oder "stock"
+     * @return Map mit "timestamp" und "price"
      */
-    public Map<String, Object> getStockIntradayData(String symbol, String interval, String outputsize) {
-        String url = "https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY" +
-                "&symbol=" + symbol.toUpperCase() +
-                "&interval=" + interval +
-                "&outputsize=" + outputsize +
-                "&apikey=" + alphaVantageKey;
+    public Map<String, Object> extractLatestPrice(Map<String, Object> apiResponse, String type) {
+        Map<String, Object> priceData = new HashMap<>();
 
         try {
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            if ("crypto".equalsIgnoreCase(type)) {
+                List<List<Object>> prices = (List<List<Object>>) apiResponse.get("prices");
+                if (prices != null && !prices.isEmpty()) {
+                    List<Object> lastEntry = prices.get(prices.size() - 1);
+                    Long timestamp = ((Number) lastEntry.get(0)).longValue();
+                    Double price = ((Number) lastEntry.get(1)).doubleValue();
 
-            if (response.containsKey("Error Message")) {
-                throw new RuntimeException("API Fehler: " + response.get("Error Message"));
-            }
-
-            if (response.containsKey("Note")) {
-                throw new RuntimeException("API Limit erreicht: " + response.get("Note"));
-            }
-
-            return response;
-        } catch (RestClientException e) {
-            throw new RuntimeException("Fehler beim Abrufen der Intraday-Aktien-Daten: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Holt aktuelle Quote/Preis für eine Aktie
-     * @param symbol Aktien-Symbol
-     */
-    public Map<String, Object> getStockQuote(String symbol) {
-        String url = "https://www.alphavantage.co/query?function=GLOBAL_QUOTE" +
-                "&symbol=" + symbol.toUpperCase() +
-                "&apikey=" + alphaVantageKey;
-
-        try {
-            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
-
-            if (response.containsKey("Error Message")) {
-                throw new RuntimeException("API Fehler: " + response.get("Error Message"));
-            }
-
-            return response;
-        } catch (RestClientException e) {
-            throw new RuntimeException("Fehler beim Abrufen der Aktien-Quote: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Hilfsmethode um den aktuellsten Preis aus den Daten zu extrahieren
-     */
-    public Map<String, Object> extractLatestPrice(Map<String, Object> apiResponse, String assetType) {
-        Map<String, Object> result = new HashMap<>();
-
-        try {
-            if ("crypto".equalsIgnoreCase(assetType)) {
-                // Für Krypto-Daten
-                Map<String, Object> timeSeries = (Map<String, Object>) apiResponse.get("Time Series (Digital Currency Daily)");
-                if (timeSeries != null && !timeSeries.isEmpty()) {
-                    String latestDate = timeSeries.keySet().iterator().next();
-                    Map<String, String> latestData = (Map<String, String>) timeSeries.get(latestDate);
-
-                    result.put("date", latestDate);
-                    result.put("open", latestData.get("1a. open (USD)"));
-                    result.put("high", latestData.get("2a. high (USD)"));
-                    result.put("low", latestData.get("3a. low (USD)"));
-                    result.put("close", latestData.get("4a. close (USD)"));
-                    result.put("volume", latestData.get("5. volume"));
+                    priceData.put("timestamp", timestamp);
+                    priceData.put("price", price);
+                } else {
+                    throw new RuntimeException("Keine Preisdaten gefunden (crypto)");
                 }
-            } else if ("stock".equalsIgnoreCase(assetType)) {
-                // Für Aktien-Daten
-                Map<String, Object> timeSeries = (Map<String, Object>) apiResponse.get("Time Series (Daily)");
-                if (timeSeries != null && !timeSeries.isEmpty()) {
-                    String latestDate = timeSeries.keySet().iterator().next();
-                    Map<String, String> latestData = (Map<String, String>) timeSeries.get(latestDate);
+            } else if ("stock".equalsIgnoreCase(type)) {
+                List<Map<String, String>> values = (List<Map<String, String>>) apiResponse.get("values");
+                if (values != null && !values.isEmpty()) {
+                    Map<String, String> latest = values.get(0); // Twelve Data: neueste Werte zuerst
+                    String datetime = latest.get("datetime");
+                    Double price = Double.parseDouble(latest.get("close"));
 
-                    result.put("date", latestDate);
-                    result.put("open", latestData.get("1. open"));
-                    result.put("high", latestData.get("2. high"));
-                    result.put("low", latestData.get("3. low"));
-                    result.put("close", latestData.get("4. close"));
-                    result.put("volume", latestData.get("5. volume"));
+                    priceData.put("timestamp", datetime);
+                    priceData.put("price", price);
+                } else {
+                    throw new RuntimeException("Keine Preisdaten gefunden (stock)");
                 }
-            } else if ("quote".equalsIgnoreCase(assetType)) {
-                // Für Global Quote Daten
-                Map<String, String> quote = (Map<String, String>) apiResponse.get("Global Quote");
-                if (quote != null) {
-                    result.put("symbol", quote.get("01. symbol"));
-                    result.put("open", quote.get("02. open"));
-                    result.put("high", quote.get("03. high"));
-                    result.put("low", quote.get("04. low"));
-                    result.put("price", quote.get("05. price"));
-                    result.put("volume", quote.get("06. volume"));
-                    result.put("latest_trading_day", quote.get("07. latest trading day"));
-                    result.put("previous_close", quote.get("08. previous close"));
-                    result.put("change", quote.get("09. change"));
-                    result.put("change_percent", quote.get("10. change percent"));
-                }
+            } else {
+                throw new IllegalArgumentException("Unbekannter Asset-Typ: " + type);
             }
         } catch (Exception e) {
-            throw new RuntimeException("Fehler beim Extrahieren der Preisdaten: " + e.getMessage());
+            throw new RuntimeException("Fehler beim Extrahieren des Preises: " + e.getMessage(), e);
         }
 
-        return result;
+        return priceData;
     }
 }
+
+
