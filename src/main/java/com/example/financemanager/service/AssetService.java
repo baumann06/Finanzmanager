@@ -18,6 +18,8 @@ public class AssetService {
     @Autowired
     private ExternalApiService externalApiService;
 
+    // ========== WATCHLIST MANAGEMENT ==========
+
     public CryptoWatchlist addToWatchlist(CryptoWatchlist asset) {
         return cryptoWatchlistRepository.save(asset);
     }
@@ -30,39 +32,40 @@ public class AssetService {
         cryptoWatchlistRepository.deleteById(id);
     }
 
+    // ========== CURRENT PRICE DATA ==========
+
     /**
-     * Holt aktuelle Preisdaten für das Asset
-     * @param symbol z.B. "bitcoin" oder "AAPL"
-     * @param type "crypto" oder "stock"
-     * @param market nur für Krypto, z.B. "usd"
-     * @return Map mit Watchlist-Daten und aktuellen Preis-Daten
+     * Holt aktuelle Preisdaten mit Change-Informationen
      */
     public Map<String, Object> getAssetWithCurrentPrice(String symbol, String type, String market) {
         Map<String, Object> result = new HashMap<>();
 
-        // Watchlist-Eintrag suchen
-        CryptoWatchlist asset = cryptoWatchlistRepository.findBySymbol(symbol);
-
-        Map<String, Object> apiResponse;
-        Map<String, Object> priceData;
+        // Watchlist-Eintrag suchen (optional)
+        CryptoWatchlist asset = null;
+        try {
+            asset = cryptoWatchlistRepository.findBySymbol(symbol);
+        } catch (Exception e) {
+            // Ignorieren, falls nicht in Watchlist
+        }
 
         try {
+            Map<String, Object> apiResponse;
+            Map<String, Object> priceData;
+
             if ("crypto".equalsIgnoreCase(type)) {
-                // CoinGecko: aktuelle Krypto-Daten (intraday oder Tagesdaten)
-                apiResponse = externalApiService.getCryptoIntradayData(symbol, market != null ? market : "usd");
-                // Annahme: extractLatestPrice ist in ExternalApiService entsprechend implementiert
-                priceData = externalApiService.extractLatestPrice(apiResponse, "crypto");
+                // CoinGecko: Aktuelle Preise mit 24h Change
+                apiResponse = externalApiService.getCryptoCurrentPrice(symbol, market != null ? market : "usd");
+                priceData = externalApiService.extractCurrentPrice(apiResponse, "crypto", symbol);
             } else if ("stock".equalsIgnoreCase(type)) {
-                // Twelve Data: aktueller Aktienkurs via time_series endpoint (interval 1min oder 1day)
-                apiResponse = externalApiService.getStockIntradayData(symbol, "1min");
-                priceData = externalApiService.extractLatestPrice(apiResponse, "stock");
+                // Twelve Data: Quote-Endpoint mit Change-Daten
+                apiResponse = externalApiService.getStockCurrentPrice(symbol);
+                priceData = externalApiService.extractCurrentPrice(apiResponse, "stock", symbol);
             } else {
                 throw new IllegalArgumentException("Unbekannter Asset-Typ: " + type + ". Erlaubt sind: 'crypto' oder 'stock'");
             }
 
             result.put("watchlist", asset);
             result.put("priceData", priceData);
-            result.put("fullApiResponse", apiResponse); // Für Debugging
             result.put("success", true);
 
         } catch (Exception e) {
@@ -74,14 +77,10 @@ public class AssetService {
         return result;
     }
 
+    // ========== HISTORICAL DATA ==========
+
     /**
      * Holt historische Preisdaten
-     * @param symbol z.B. "bitcoin" oder "AAPL"
-     * @param type "crypto" oder "stock"
-     * @param market nur für Krypto (z.B. usd)
-     * @param period "daily" oder "intraday"
-     * @param interval nur für intraday: "1min", "5min", "15min", "30min", "60min"
-     * @return Map mit historischen Kursdaten
      */
     public Map<String, Object> getAssetPriceHistory(String symbol, String type, String market, String period, String interval) {
         Map<String, Object> result = new HashMap<>();
@@ -91,18 +90,14 @@ public class AssetService {
 
             if ("crypto".equalsIgnoreCase(type)) {
                 if ("intraday".equalsIgnoreCase(period)) {
-                    // CoinGecko Intraday-Daten (stündlich)
                     apiResponse = externalApiService.getCryptoIntradayData(symbol, market != null ? market : "usd");
                 } else {
-                    // CoinGecko Tagesdaten (30 Tage)
                     apiResponse = externalApiService.getCryptoDailyData(symbol, market != null ? market : "usd");
                 }
             } else if ("stock".equalsIgnoreCase(type)) {
                 if ("intraday".equalsIgnoreCase(period)) {
-                    // Twelve Data Intraday (1min bis 60min Intervall)
                     apiResponse = externalApiService.getStockIntradayData(symbol, interval != null ? interval : "5min");
                 } else {
-                    // Twelve Data Tagesdaten
                     apiResponse = externalApiService.getStockDailyData(symbol);
                 }
             } else {
@@ -127,12 +122,10 @@ public class AssetService {
         return getAssetPriceHistory(symbol, type, market, "daily", null);
     }
 
+    // ========== MULTIPLE ASSETS ==========
+
     /**
      * Holt mehrere Assets mit aktuellen Preisen
-     * @param symbols Liste von Symbolen
-     * @param type Asset-Typ
-     * @param market Markt (für Krypto)
-     * @return Map mit allen Asset-Daten
      */
     public Map<String, Object> getMultipleAssetsWithPrices(List<String> symbols, String type, String market) {
         Map<String, Object> result = new HashMap<>();
@@ -152,42 +145,108 @@ public class AssetService {
 
         result.put("assets", assetsData);
         result.put("count", symbols.size());
+        result.put("success", true);
 
         return result;
     }
 
+    // ========== CHART DATA FORMATTING ==========
+
     /**
-     * Hilfsmethode um Chart-Daten zu formatieren
-     * @param apiResponse Rohe API-Antwort
-     * @param type Asset-Typ
-     * @return Formatierte Chart-Daten
+     * Formatiert Chart-Daten für Frontend
      */
     public Map<String, Object> formatChartData(Map<String, Object> apiResponse, String type) {
         Map<String, Object> chartData = new HashMap<>();
 
         try {
             if ("crypto".equalsIgnoreCase(type)) {
-                // CoinGecko liefert meist Preise als Liste von Timestamp/Price-Paaren in "prices"
+                // CoinGecko: prices als Liste von [timestamp, price]
+                @SuppressWarnings("unchecked")
                 List<List<Object>> prices = (List<List<Object>>) apiResponse.get("prices");
-                // Beispiel: Umwandlung in Map<Timestamp, Price>
-                Map<Long, Double> formattedPrices = new HashMap<>();
-                for (List<Object> entry : prices) {
-                    Long timestamp = ((Number) entry.get(0)).longValue();
-                    Double price = ((Number) entry.get(1)).doubleValue();
-                    formattedPrices.put(timestamp, price);
+
+                if (prices != null && !prices.isEmpty()) {
+                    // Umwandlung in Chart-freundliches Format
+                    List<Map<String, Object>> chartPoints = prices.stream()
+                            .map(pricePoint -> {
+                                Map<String, Object> point = new HashMap<>();
+                                point.put("timestamp", ((Number) pricePoint.get(0)).longValue());
+                                point.put("price", ((Number) pricePoint.get(1)).doubleValue());
+                                point.put("date", new java.util.Date(((Number) pricePoint.get(0)).longValue()).toString());
+                                return point;
+                            })
+                            .collect(java.util.stream.Collectors.toList());
+
+                    chartData.put("data", chartPoints);
+                    chartData.put("type", "crypto");
                 }
-                chartData.put("prices", formattedPrices);
 
             } else if ("stock".equalsIgnoreCase(type)) {
-                // Twelve Data liefert "values" als Liste von Tages- oder Intraday-Daten
+                // Twelve Data: values als Liste von Maps
+                @SuppressWarnings("unchecked")
                 List<Map<String, String>> values = (List<Map<String, String>>) apiResponse.get("values");
-                // Hier könnte man Daten in ein passendes Format bringen
-                chartData.put("values", values);
+
+                if (values != null && !values.isEmpty()) {
+                    // Umwandlung in Chart-freundliches Format
+                    List<Map<String, Object>> chartPoints = values.stream()
+                            .map(valuePoint -> {
+                                Map<String, Object> point = new HashMap<>();
+                                point.put("date", valuePoint.get("datetime"));
+                                point.put("price", Double.parseDouble(valuePoint.get("close")));
+                                point.put("open", Double.parseDouble(valuePoint.get("open")));
+                                point.put("high", Double.parseDouble(valuePoint.get("high")));
+                                point.put("low", Double.parseDouble(valuePoint.get("low")));
+                                point.put("volume", valuePoint.get("volume"));
+                                return point;
+                            })
+                            .collect(java.util.stream.Collectors.toList());
+
+                    chartData.put("data", chartPoints);
+                    chartData.put("type", "stock");
+                }
             }
+
+            chartData.put("success", true);
+
         } catch (Exception e) {
             chartData.put("error", "Fehler beim Formatieren der Chart-Daten: " + e.getMessage());
+            chartData.put("success", false);
         }
 
         return chartData;
+    }
+
+    // ========== UTILITY METHODS ==========
+
+    /**
+     * Validiert Asset-Symbol vor API-Aufruf
+     */
+    public boolean isValidSymbol(String symbol, String type) {
+        if (symbol == null || symbol.trim().isEmpty()) {
+            return false;
+        }
+
+        // Basis-Validierung
+        if ("crypto".equalsIgnoreCase(type)) {
+            // Für Krypto: prüfen ob Symbol bekannt ist oder als gültiger CoinGecko ID verwendet werden kann
+            return symbol.length() >= 2 && symbol.length() <= 20;
+        } else if ("stock".equalsIgnoreCase(type)) {
+            // Für Aktien: typische Ticker-Symbol Länge
+            return symbol.length() >= 1 && symbol.length() <= 10;
+        }
+
+        return false;
+    }
+
+    /**
+     * Erstellt einheitliche Fehler-Response
+     */
+    public Map<String, Object> createErrorResponse(String message, Exception e) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("success", false);
+        error.put("error", message);
+        if (e != null) {
+            error.put("details", e.getMessage());
+        }
+        return error;
     }
 }

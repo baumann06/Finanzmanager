@@ -67,8 +67,8 @@
             <h4>Preisverlauf</h4>
             <div class="chart">
               <div
-                  v-for="(price, index) in priceHistory"
-                  :key="index"
+                  v-for="price in priceHistory"
+                  :key="price.date"
                   class="chart-bar"
                   :style="{ height: calculateBarHeight(price.close || price.price) + 'px' }"
                   :title="price.date + ': ' + formatPrice(price.close || price.price) + ' USD'"
@@ -86,20 +86,20 @@
 </template>
 
 <script>
-import CryptoService from '../services/CryptoService'; // Dein Service (erweitern um Aktien-Methoden)
+import CryptoService from '../services/CryptoService';
 
 export default {
-  name: 'WatchlistModule',
+  name: 'CryptoModule',
   data() {
     return {
       watchlist: [],
       newAsset: {
         symbol: '',
         name: '',
-        type: 'crypto',  // Default auf Krypto
+        type: 'crypto',
         notes: ''
       },
-      assetPrices: {},  // { symbol: { success: true/false, price: x, change: y, change_percent: z } }
+      assetPrices: {},
       selectedAsset: null,
       priceHistory: []
     };
@@ -130,7 +130,7 @@ export default {
       CryptoService.addToWatchlist(this.newAsset)
           .then(() => {
             this.fetchWatchlist();
-            this.newAsset = { symbol: '', name: '', type: 'crypto', notes: '' };
+            this.newAsset = {symbol: '', name: '', type: 'crypto', notes: ''};
           })
           .catch(error => {
             console.error('Fehler beim Hinzufügen:', error);
@@ -149,40 +149,32 @@ export default {
       if (asset.type === 'crypto') {
         CryptoService.getCryptoPrice(asset.symbol)
             .then(response => {
-              // response.data = { success: true, priceData: {...} }
               const priceData = response.data.priceData || {};
-              this.assetPrices = {
-                ...this.assetPrices,
-                [asset.symbol]: {
-                  success: response.data.success,
-                  price: priceData.price || priceData.close,
-                  change: priceData.change,
-                  change_percent: priceData.change_percent
-                }
-              };
+              this.$set(this.assetPrices, asset.symbol, {
+                success: response.data.success,
+                price: priceData.price || priceData.close,
+                change: priceData.change,
+                change_percent: priceData.change_percent
+              });
             })
             .catch(error => {
               console.error(`Fehler bei Krypto-Preis für ${asset.symbol}:`, error);
-              this.$set(this.assetPrices, asset.symbol, { success: false, error: error.message });
+              this.$set(this.assetPrices, asset.symbol, {success: false, error: error.message});
             });
       } else if (asset.type === 'stock') {
         CryptoService.getStockPrice(asset.symbol)
             .then(response => {
-              // response.data = { success: true, priceData: {...} }
               const priceData = response.data.priceData || {};
-              this.assetPrices = {
-                ...this.assetPrices,
-                [asset.symbol]: {
-                  success: response.data.success,
-                  price: priceData.price || priceData.close,
-                  change: priceData.change,
-                  change_percent: priceData.change_percent
-                }
-              };
+              this.$set(this.assetPrices, asset.symbol, {
+                success: response.data.success,
+                price: priceData.price || priceData.close,
+                change: priceData.change,
+                change_percent: priceData.change_percent
+              });
             })
             .catch(error => {
               console.error(`Fehler bei Aktien-Preis für ${asset.symbol}:`, error);
-              this.$set(this.assetPrices, asset.symbol, { success: false, error: error.message });
+              this.$set(this.assetPrices, asset.symbol, {success: false, error: error.message});
             });
       }
     },
@@ -199,15 +191,14 @@ export default {
         CryptoService.getCryptoHistory(asset.symbol)
             .then(response => {
               if (response.data.success && response.data.historyData) {
-                const timeSeries = response.data.historyData['Time Series (Digital Currency Daily)'];
-                if (timeSeries) {
-                  this.priceHistory = Object.keys(timeSeries)
-                      .slice(0, 7)
-                      .map(date => ({
-                        date,
-                        close: timeSeries[date]['4a. close (USD)'],
-                        price: timeSeries[date]['4a. close (USD)']
-                      }));
+                // Für CoinGecko: prices Array verarbeiten
+                const prices = response.data.historyData.prices;
+                if (prices && Array.isArray(prices)) {
+                  this.priceHistory = prices.slice(0, 7).map((item, index) => ({
+                    date: new Date(item[0]).toLocaleDateString(),
+                    price: item[1],
+                    close: item[1]
+                  }));
                 } else {
                   this.priceHistory = [];
                 }
@@ -224,15 +215,14 @@ export default {
         CryptoService.getStockHistory(asset.symbol)
             .then(response => {
               if (response.data.success && response.data.historyData) {
-                const timeSeries = response.data.historyData['Time Series (Daily)'];
-                if (timeSeries) {
-                  this.priceHistory = Object.keys(timeSeries)
-                      .slice(0, 7)
-                      .map(date => ({
-                        date,
-                        close: timeSeries[date]['4. close'],
-                        price: timeSeries[date]['4. close']
-                      }));
+                // Für Twelve Data: values Array verarbeiten
+                const values = response.data.historyData.values;
+                if (values && Array.isArray(values)) {
+                  this.priceHistory = values.slice(0, 7).map(item => ({
+                    date: item.datetime,
+                    close: item.close,
+                    price: item.close
+                  }));
                 } else {
                   this.priceHistory = [];
                 }
@@ -276,43 +266,95 @@ export default {
 </script>
 
 <style scoped>
-.add-crypto-section {
+.add-asset-section {
   margin-bottom: 20px;
 }
+
 .form {
   display: flex;
   flex-direction: column;
   gap: 10px;
   max-width: 400px;
 }
+
+.form input, .form select, .form textarea, .form button {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+}
+
+.form button {
+  background-color: #007bff;
+  color: white;
+  cursor: pointer;
+}
+
+.form button:hover {
+  background-color: #0056b3;
+}
+
 .watchlist-section {
   margin-top: 20px;
 }
-.crypto-cards {
+
+.asset-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 20px;
 }
-.crypto-card {
+
+.asset-card {
   border: 1px solid #ddd;
   border-radius: 5px;
   padding: 15px;
+  background-color: #f9f9f9;
 }
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
 }
+
+.card-header h4 {
+  margin: 0;
+}
+
+.card-header button {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.card-header button:hover {
+  background-color: #c82333;
+}
+
+.price-info {
+  margin: 10px 0;
+  padding: 10px;
+  background-color: white;
+  border-radius: 3px;
+}
+
 .positive-change {
   color: green;
+  font-weight: bold;
 }
+
 .negative-change {
   color: red;
+  font-weight: bold;
 }
+
 .price-history {
   margin-top: 15px;
 }
+
 .chart {
   display: flex;
   align-items: flex-end;
@@ -320,21 +362,37 @@ export default {
   gap: 5px;
   border-bottom: 1px solid #ccc;
   padding-top: 10px;
+  background-color: white;
+  padding: 10px;
+  border-radius: 3px;
 }
+
 .chart-bar {
   flex: 1;
   background-color: #4caf50;
   min-width: 10px;
+  transition: background-color 0.3s;
 }
+
+.chart-bar:hover {
+  background-color: #45a049;
+}
+
 .notes {
   margin: 10px 0;
   background-color: #f9f9f9;
   padding: 10px;
   border-radius: 3px;
+  border-left: 4px solid #007bff;
 }
+
 .error-info {
   color: red;
+  background-color: #f8d7da;
+  padding: 10px;
+  border-radius: 3px;
 }
+
 .error-info button {
   background-color: #ff6b6b;
   color: white;
@@ -344,7 +402,14 @@ export default {
   cursor: pointer;
   margin-top: 5px;
 }
+
 .error-info button:hover {
   background-color: #ff5252;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #666;
 }
 </style>
