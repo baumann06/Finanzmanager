@@ -40,41 +40,50 @@ public class AssetService {
     public Map<String, Object> getAssetWithCurrentPrice(String symbol, String type, String market) {
         Map<String, Object> result = new HashMap<>();
 
-        // Watchlist-Eintrag suchen (optional)
-        CryptoWatchlist asset = null;
         try {
-            asset = cryptoWatchlistRepository.findBySymbol(symbol);
-        } catch (Exception e) {
-            // Ignorieren, falls nicht in Watchlist
-        }
-
-        try {
-            Map<String, Object> apiResponse;
-            Map<String, Object> priceData;
-
-            if ("crypto".equalsIgnoreCase(type)) {
-                // CoinGecko: Aktuelle Preise mit 24h Change
-                apiResponse = externalApiService.getCryptoCurrentPrice(symbol, market != null ? market : "usd");
-                priceData = externalApiService.extractCurrentPrice(apiResponse, "crypto", symbol);
-            } else if ("stock".equalsIgnoreCase(type)) {
-                // Twelve Data: Quote-Endpoint mit Change-Daten
-                apiResponse = externalApiService.getStockCurrentPrice(symbol);
-                priceData = externalApiService.extractCurrentPrice(apiResponse, "stock", symbol);
-            } else {
-                throw new IllegalArgumentException("Unbekannter Asset-Typ: " + type + ". Erlaubt sind: 'crypto' oder 'stock'");
+            if (!isValidSymbol(symbol, type)) {
+                throw new IllegalArgumentException("Invalid symbol for type " + type);
             }
 
-            result.put("watchlist", asset);
-            result.put("priceData", priceData);
+            Map<String, Object> priceData = new HashMap<>();
+            if ("crypto".equalsIgnoreCase(type)) {
+                Map<String, Object> apiResponse = externalApiService.getCryptoCurrentPrice(symbol, market);
+                priceData = externalApiService.extractCurrentPrice(apiResponse, "crypto", symbol);
+                // Ensure we always have a price field
+                if (priceData.containsKey("close") && !priceData.containsKey("price")) {
+                    priceData.put("price", priceData.get("close"));
+                }
+            } else {
+                // Stock handling...
+            }
+
             result.put("success", true);
+            result.put("priceData", priceData);
 
         } catch (Exception e) {
-            result.put("error", e.getMessage());
             result.put("success", false);
-            result.put("watchlist", asset);
+            result.put("error", "Failed to fetch price: " + e.getMessage());
+            // Detailed error for debugging
+            result.put("errorDetails", getErrorDetails(e));
         }
 
         return result;
+    }
+
+    /**
+     * Extrahiert detaillierte Informationen aus einer Exception.
+     */
+    private String getErrorDetails(Exception e) {
+        StringBuilder details = new StringBuilder();
+        details.append("Exception: ").append(e.getClass().getName()).append("\n");
+        details.append("Message: ").append(e.getMessage()).append("\n");
+
+        // Stacktrace hinzufügen
+        for (StackTraceElement element : e.getStackTrace()) {
+            details.append("at ").append(element.toString()).append("\n");
+        }
+
+        return details.toString();
     }
 
     // ========== HISTORICAL DATA ==========

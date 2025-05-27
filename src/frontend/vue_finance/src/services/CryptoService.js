@@ -210,15 +210,15 @@ export default {
 
             switch (status) {
                 case 400:
-                    throw new Error(data?.error || 'Ungültige Anfrage');
+                    throw new Error((data && data.error) || 'Ungültige Anfrage');
                 case 404:
-                    throw new Error(data?.error || 'Asset nicht gefunden');
+                    throw new Error((data && data.error) || 'Asset nicht gefunden');
                 case 429:
                     throw new Error('API-Limit erreicht. Bitte versuchen Sie es später erneut.');
                 case 500:
-                    throw new Error(data?.error || 'Serverfehler');
+                    throw new Error((data && data.error) || 'Serverfehler');
                 default:
-                    throw new Error(data?.error || `HTTP ${status}: ${error.message}`);
+                    throw new Error((data && data.error) || `HTTP ${status}: ${error.message}`);
             }
         } else if (error.request) {
             // Anfrage wurde gesendet, aber keine Antwort erhalten
