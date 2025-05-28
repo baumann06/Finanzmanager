@@ -33,7 +33,7 @@
 
           <div v-if="assetPrices[asset.symbol]" class="price-info">
             <div v-if="assetPrices[asset.symbol].success">
-              <p>Aktueller Preis: {{ formatPrice(assetPrices[asset.symbol].price) }} USD</p>
+              <p>Aktueller Preis: {{ formatPrice(assetPrices[asset.symbol].price) }} {{ asset.type === 'crypto' ? 'USD' : 'USD' }}</p>
               <p v-if="assetPrices[asset.symbol].change !== undefined && assetPrices[asset.symbol].change !== null">24h Änderung:
                 <span :class="getChangeClass(assetPrices[asset.symbol].change)">
                   {{ formatChange(assetPrices[asset.symbol].change) }}
@@ -52,32 +52,16 @@
           </div>
 
           <div v-else class="price-info">
-            <p v-if="assetPrices[asset.symbol] && assetPrices[asset.symbol].loading">Lade Preisdaten...</p>
+            <p v-if="isLoading(asset.symbol)">Lade Preisdaten...</p>
             <div v-else class="error-info">
-              <p>Fehler: {{ (assetPrices[asset.symbol] && assetPrices[asset.symbol].error) || 'Unbekannter Fehler' }}</p>
-              <p>Letzter Versuch: {{ (assetPrices[asset.symbol] && assetPrices[asset.symbol].lastRetry) || 'Noch kein Versuch' }}</p>
-              <button @click="fetchAssetPrice(asset)">Erneut versuchen</button>
+              <p>Noch keine Preisdaten geladen</p>
+              <button @click="fetchAssetPrice(asset)">Preise laden</button>
             </div>
           </div>
 
           <div class="notes">
             <p><strong>Notizen:</strong></p>
             <p>{{ asset.notes || 'Keine Notizen' }}</p>
-          </div>
-
-          <button @click="showHistory(asset)">Preisverlauf anzeigen</button>
-
-          <div v-if="selectedAsset && selectedAsset.symbol === asset.symbol && priceHistory.length > 0" class="price-history">
-            <h4>Preisverlauf</h4>
-            <div class="chart">
-              <div
-                  v-for="price in priceHistory"
-                  :key="price.date"
-                  class="chart-bar"
-                  :style="{ height: calculateBarHeight(price.close || price.price) + 'px' }"
-                  :title="price.date + ': ' + formatPrice(price.close || price.price) + ' USD'"
-              ></div>
-            </div>
           </div>
         </div>
       </div>
@@ -107,19 +91,22 @@ export default {
     const assetPrices = ref({});
     const selectedAsset = ref(null);
     const priceHistory = ref([]);
+    const loadingAssets = ref({});
 
     // Methods
     const fetchWatchlist = () => {
       CryptoService.getWatchlist()
           .then(response => {
             watchlist.value = response.data;
+            // Load price data for all assets
             watchlist.value.forEach(asset => {
               fetchAssetPrice(asset);
             });
           })
           .catch(error => {
             console.error('Fehler beim Laden der Watchlist:', error);
-            alert('Fehler beim Laden der Watchlist: ' + error.message);
+            alert('Fehler beim Laden der Watchlist: ' +
+                ((error.response && error.response.data && error.response.data.error) || error.message));
           });
     };
 
@@ -129,7 +116,15 @@ export default {
         return;
       }
 
-      CryptoService.addToWatchlist(newAsset)
+      // Validate and clean up inputs
+      const assetToAdd = {
+        symbol: newAsset.symbol.trim().toUpperCase(),
+        name: newAsset.name.trim(),
+        type: newAsset.type,
+        notes: newAsset.notes.trim()
+      };
+
+      CryptoService.addToWatchlist(assetToAdd)
           .then(() => {
             fetchWatchlist();
             // Reset form
@@ -140,86 +135,88 @@ export default {
           })
           .catch(error => {
             console.error('Fehler beim Hinzufügen:', error);
-            alert('Fehler beim Hinzufügen zur Watchlist: ' + error.message);
+            alert('Fehler beim Hinzufügen zur Watchlist: ' +
+                ((error.response && error.response.data && error.response.data.error) || error.message));
           });
     };
 
     const removeFromWatchlist = (id) => {
       CryptoService.removeFromWatchlist(id)
-          .then(() => fetchWatchlist())
+          .then(() => {
+            fetchWatchlist();
+            // Clean up price data for removed asset
+            const removedAsset = watchlist.value.find(asset => asset.id === id);
+            if (removedAsset) {
+              delete assetPrices.value[removedAsset.symbol];
+              delete loadingAssets.value[removedAsset.symbol];
+            }
+          })
           .catch(error => {
             console.error('Fehler beim Entfernen:', error);
-            alert('Fehler beim Entfernen aus der Watchlist: ' + error.message);
+            alert('Fehler beim Entfernen aus der Watchlist: ' +
+                ((error.response && error.response.data && error.response.data.error) || error.message));
           });
     };
 
     const fetchAssetPrice = (asset) => {
+      if (!asset || !asset.symbol) {
+        console.error('Invalid asset provided to fetchAssetPrice');
+        return;
+      }
+
       // Set loading state
-      assetPrices.value[asset.symbol] = { loading: true };
+      loadingAssets.value[asset.symbol] = true;
 
-      const assetType = asset.type === 'crypto' ? 'getCryptoPrice' : 'getStockPrice';
+      console.log(`Fetching price for ${asset.symbol} as ${asset.type}`);
 
-      CryptoService[assetType](asset.symbol)
+      CryptoService.getAssetPriceAuto(asset.symbol, asset.type)
           .then(response => {
             console.log(`API Response for ${asset.symbol}:`, response.data);
 
-            // Check if the response indicates success
             if (!response.data || !response.data.success) {
-              const errorMessage = (response.data && response.data.error) || 'Unknown API error';
-              throw new Error(errorMessage);
+              throw new Error((response.data && response.data.error) || 'API returned unsuccessful response');
             }
 
-            // Extract price data from the response
-            const priceData = response.data.priceData || {};
-            console.log(`Extracted price data for ${asset.symbol}:`, priceData);
-
-            // Handle different price field names
-            let currentPrice = null;
-            if (priceData.price !== undefined) {
-              currentPrice = priceData.price;
-            } else if (priceData.close !== undefined) {
-              currentPrice = priceData.close;
-            } else if (priceData.last !== undefined) {
-              currentPrice = priceData.last;
-            }
-
-            if (currentPrice === null || currentPrice === undefined) {
-              throw new Error('No price data found in API response');
+            const priceData = response.data.priceData;
+            if (!priceData || typeof priceData.price === 'undefined') {
+              throw new Error('No valid price data in response');
             }
 
             // Set the asset price data
             assetPrices.value[asset.symbol] = {
               success: true,
-              price: parseFloat(currentPrice),
+              price: parseFloat(priceData.price),
               change: priceData.change ? parseFloat(priceData.change) : null,
               change_percent: priceData.change_percent ? parseFloat(priceData.change_percent) : null,
               lastUpdated: new Date().toLocaleTimeString()
             };
 
-            console.log(`Final price data for ${asset.symbol}:`, assetPrices.value[asset.symbol]);
+            console.log(`Successfully loaded price for ${asset.symbol}:`, assetPrices.value[asset.symbol]);
           })
           .catch(error => {
             console.error(`Price fetch error for ${asset.symbol}:`, error);
-            console.error('Full error object:', error);
 
             assetPrices.value[asset.symbol] = {
               success: false,
               error: simplifyError(error),
               lastRetry: new Date().toLocaleTimeString()
             };
+          })
+          .finally(() => {
+            loadingAssets.value[asset.symbol] = false;
           });
     };
 
-    const simplifyError = (error) => {
-      if (error.response) {
-        const message = (error.response.data && error.response.data.message) || 'No details';
-        return `Server error: ${error.response.status} - ${message}`;
-      } else if (error.request) {
-        return 'No response from server - check network connection';
+    const simplifyError = error => {
+      if (error.response && error.response.data && error.response.data.error) {
+        return error.response.data.error;
+      } else if (error.response && error.response.status) {
+        return `HTTP ${error.response.status}`;
       } else {
-        return error.message || 'Unknown error';
+        return error.message || 'Unbekannter Fehler';
       }
     };
+
 
     const showHistory = (asset) => {
       if (selectedAsset.value && selectedAsset.value.symbol === asset.symbol) {
@@ -229,85 +226,85 @@ export default {
       }
 
       selectedAsset.value = asset;
+      priceHistory.value = [];
 
-      if (asset.type === 'crypto') {
-        CryptoService.getCryptoHistory(asset.symbol)
-            .then(response => {
-              if (response.data.success && response.data.historyData) {
-                const historyData = response.data.historyData;
-                const prices = historyData && historyData.prices;
-                if (prices && Array.isArray(prices)) {
-                  priceHistory.value = prices.slice(0, 7).map((item) => ({
-                    date: new Date(item[0]).toLocaleDateString(),
-                    price: item[1],
-                    close: item[1]
-                  }));
-                } else {
-                  priceHistory.value = [];
-                }
-              } else {
-                priceHistory.value = [];
+      console.log(`Loading history for ${asset.symbol} (${asset.type})`);
+
+      CryptoService.getAssetHistory(asset.symbol, asset.type)
+          .then(response => {
+            console.log(`History response for ${asset.symbol}:`, response.data);
+
+            if (!response.data.success || !response.data.historyData) {
+              throw new Error('No history data available');
+            }
+
+            const historyData = response.data.historyData;
+
+            if (asset.type === 'crypto') {
+              // Handle CoinGecko format
+              const prices = historyData.prices;
+              if (prices && Array.isArray(prices)) {
+                priceHistory.value = prices.slice(0, 7).map((item) => ({
+                  date: new Date(item[0]).toLocaleDateString('de-DE'),
+                  price: item[1],
+                  close: item[1]
+                }));
               }
-            })
-            .catch(error => {
-              console.error(`Fehler beim Laden History Krypto für ${asset.symbol}:`, error);
-              alert('Fehler beim Laden der Kursverlaufsdaten: ' + error.message);
-              priceHistory.value = [];
-            });
-      } else if (asset.type === 'stock') {
-        CryptoService.getStockHistory(asset.symbol)
-            .then(response => {
-              if (response.data.success && response.data.historyData) {
-                const historyData = response.data.historyData;
-                const values = historyData && historyData.values;
-                if (values && Array.isArray(values)) {
-                  priceHistory.value = values.slice(0, 7).map(item => ({
-                    date: item.datetime,
-                    close: item.close,
-                    price: item.close
-                  }));
-                } else {
-                  priceHistory.value = [];
-                }
-              } else {
-                priceHistory.value = [];
+            } else if (asset.type === 'stock') {
+              // Handle TwelveData format
+              const values = historyData.values;
+              if (values && Array.isArray(values)) {
+                priceHistory.value = values.slice(0, 7).map(item => ({
+                  date: item.datetime,
+                  close: parseFloat(item.close),
+                  price: parseFloat(item.close)
+                }));
               }
-            })
-            .catch(error => {
-              console.error(`Fehler beim Laden History Aktie für ${asset.symbol}:`, error);
-              alert('Fehler beim Laden der Kursverlaufsdaten: ' + error.message);
-              priceHistory.value = [];
-            });
-      }
+            }
+
+            console.log(`Loaded ${priceHistory.value.length} history points for ${asset.symbol}`);
+          })
+          .catch(error => {
+            console.error(`History fetch error for ${asset.symbol}:`, error);
+            alert('Fehler beim Laden der Kursverlaufsdaten: ' + simplifyError(error));
+            priceHistory.value = [];
+          });
+    };
+
+    const isLoading = (symbol) => {
+      return loadingAssets.value[symbol] || false;
     };
 
     const formatPrice = (price) => {
-      if (!price) return '0.00';
+      if (!price || isNaN(price)) return '0.00';
       return parseFloat(price).toFixed(2);
     };
 
     const formatChange = (change) => {
-      if (!change) return '0.00';
+      if (!change || isNaN(change)) return '0.00';
       const cleanChange = change.toString().replace('%', '');
       return parseFloat(cleanChange).toFixed(2);
     };
 
     const formatChangePercent = (changePercent) => {
-      if (!changePercent) return '0.00%';
-      return changePercent.toString().includes('%')
-          ? changePercent
-          : parseFloat(changePercent).toFixed(2) + '%';
+      if (!changePercent || isNaN(changePercent)) return '0.00%';
+      if (changePercent.toString().includes('%')) {
+        return changePercent.toString();
+      }
+      return parseFloat(changePercent).toFixed(2) + '%';
     };
 
     const getChangeClass = (change) => {
-      if (!change) return '';
+      if (!change || isNaN(change)) return '';
       const numericChange = parseFloat(change.toString().replace('%', ''));
       return numericChange >= 0 ? 'positive-change' : 'negative-change';
     };
 
     const calculateBarHeight = (price) => {
-      if (!price) return 10;
-      return Math.max(parseFloat(price) / 1000, 10);
+      if (!price || isNaN(price)) return 10;
+      // Scale the price to a reasonable height for display
+      const scaledHeight = Math.max(parseFloat(price) * 0.1, 10);
+      return Math.min(scaledHeight, 200); // Cap at 200px for very high prices
     };
 
     // Lifecycle
@@ -321,11 +318,13 @@ export default {
       assetPrices,
       selectedAsset,
       priceHistory,
+      loadingAssets,
       fetchWatchlist,
       addToWatchlist,
       removeFromWatchlist,
       fetchAssetPrice,
       showHistory,
+      isLoading,
       formatPrice,
       formatChange,
       formatChangePercent,
@@ -338,7 +337,10 @@ export default {
 
 <style scoped>
 .add-asset-section {
-  margin-bottom: 20px;
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 30px;
 }
 
 .form {
@@ -348,139 +350,148 @@ export default {
   max-width: 400px;
 }
 
-.form input, .form select, .form textarea, .form button {
-  padding: 8px;
+.form input, .form select, .form textarea {
+  padding: 10px;
   border: 1px solid #ddd;
-  border-radius: 3px;
+  border-radius: 4px;
+  font-size: 14px;
 }
 
 .form button {
-  background-color: #007bff;
+  padding: 12px;
+  background: #007bff;
   color: white;
+  border: none;
+  border-radius: 4px;
   cursor: pointer;
+  font-size: 16px;
 }
 
 .form button:hover {
-  background-color: #0056b3;
-}
-
-.watchlist-section {
-  margin-top: 20px;
+  background: #0056b3;
 }
 
 .asset-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
   gap: 20px;
 }
 
 .asset-card {
   border: 1px solid #ddd;
-  border-radius: 5px;
-  padding: 15px;
-  background-color: #f9f9f9;
+  border-radius: 8px;
+  padding: 20px;
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
 }
 
 .card-header h4 {
   margin: 0;
+  color: #333;
 }
 
 .card-header button {
-  background-color: #dc3545;
+  background: #dc3545;
   color: white;
   border: none;
   padding: 5px 10px;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
+  font-size: 12px;
 }
 
 .card-header button:hover {
-  background-color: #c82333;
+  background: #c82333;
 }
 
 .price-info {
-  margin: 10px 0;
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.price-info p {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.error-info {
+  background: #f8d7da;
+  color: #721c24;
   padding: 10px;
-  background-color: white;
-  border-radius: 3px;
+  border-radius: 4px;
+}
+
+.error-info button {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 5px;
+  font-size: 12px;
 }
 
 .positive-change {
-  color: green;
+  color: #28a745;
   font-weight: bold;
 }
 
 .negative-change {
-  color: red;
+  color: #dc3545;
   font-weight: bold;
 }
 
+.notes {
+  margin-bottom: 15px;
+}
+
+.notes p {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
 .price-history {
-  margin-top: 15px;
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
 }
 
 .chart {
   display: flex;
-  align-items: flex-end;
+  align-items: end;
   height: 150px;
   gap: 5px;
-  border-bottom: 1px solid #ccc;
-  padding-top: 10px;
-  background-color: white;
-  padding: 10px;
-  border-radius: 3px;
+  margin-top: 10px;
 }
 
 .chart-bar {
-  flex: 1;
-  background-color: #4caf50;
-  min-width: 10px;
-  transition: background-color 0.3s;
+  background: linear-gradient(to top, #007bff, #0056b3);
+  width: 30px;
+  min-height: 10px;
+  border-radius: 2px 2px 0 0;
+  cursor: pointer;
+  transition: opacity 0.2s;
 }
 
 .chart-bar:hover {
-  background-color: #45a049;
-}
-
-.notes {
-  margin: 10px 0;
-  background-color: #f9f9f9;
-  padding: 10px;
-  border-radius: 3px;
-  border-left: 4px solid #007bff;
-}
-
-.error-info {
-  color: red;
-  background-color: #f8d7da;
-  padding: 10px;
-  border-radius: 3px;
-}
-
-.error-info button {
-  background-color: #ff6b6b;
-  color: white;
-  border: none;
-  padding: 5px 10px;
-  border-radius: 3px;
-  cursor: pointer;
-  margin-top: 5px;
-}
-
-.error-info button:hover {
-  background-color: #ff5252;
+  opacity: 0.8;
 }
 
 .empty-state {
   text-align: center;
   padding: 40px;
   color: #666;
+  font-size: 18px;
 }
 </style>

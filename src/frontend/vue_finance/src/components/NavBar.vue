@@ -12,7 +12,7 @@
         :class="{ active: activeTab === 'crypto' }"
         @click="$emit('change-tab', 'crypto')"
     >
-      Krypto
+      Assets
     </div>
   </div>
 </template>

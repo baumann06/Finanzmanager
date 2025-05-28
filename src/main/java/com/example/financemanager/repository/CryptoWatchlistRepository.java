@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface CryptoWatchlistRepository extends JpaRepository<CryptoWatchlist, Long> {
     CryptoWatchlist findBySymbol(String symbol);
+    boolean existsBySymbol(String symbol);
 }

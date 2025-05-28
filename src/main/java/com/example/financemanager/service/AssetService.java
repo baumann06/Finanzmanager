@@ -18,6 +18,74 @@ public class AssetService {
     @Autowired
     private ExternalApiService externalApiService;
 
+    // ========== CURRENT PRICE DATA ==========
+
+    /**
+     * 🔧 FIXED: Holt aktuelle Preisdaten mit verbesserter Fehlerbehandlung
+     */
+    public Map<String, Object> getAssetWithCurrentPrice(String symbol, String type, String market) {
+        Map<String, Object> result = new HashMap<>();
+
+        System.out.println("=== AssetService Debug ===");
+        System.out.println("Symbol: " + symbol);
+        System.out.println("Type: " + type);
+        System.out.println("Market: " + market);
+
+        try {
+            if (!isValidSymbol(symbol, type)) {
+                throw new IllegalArgumentException("Invalid symbol '" + symbol + "' for type '" + type + "'");
+            }
+
+            Map<String, Object> priceData = new HashMap<>();
+
+            if ("crypto".equalsIgnoreCase(type)) {
+                System.out.println("🪙 Processing as CRYPTO");
+                Map<String, Object> apiResponse = externalApiService.getCryptoCurrentPrice(symbol, market != null ? market : "usd");
+                System.out.println("🔍 Raw API Response: " + apiResponse);
+
+                priceData = externalApiService.extractCurrentPrice(apiResponse, "crypto", symbol);
+                System.out.println("💰 Extracted Price Data: " + priceData);
+
+                // Ensure we always have a price field
+                if (priceData.containsKey("close") && !priceData.containsKey("price")) {
+                    priceData.put("price", priceData.get("close"));
+                }
+
+            } else if ("stock".equalsIgnoreCase(type)) {
+                System.out.println("📈 Processing as STOCK");
+                // TODO: Implement stock handling
+                Map<String, Object> apiResponse = externalApiService.getStockCurrentPrice(symbol);
+                priceData = externalApiService.extractCurrentPrice(apiResponse, "stock", symbol);
+
+            } else {
+                throw new IllegalArgumentException("Unbekannter Asset-Typ: '" + type + "'. Erlaubt sind: 'crypto' oder 'stock'");
+            }
+
+            // Prüfen ob priceData leer ist
+            if (priceData == null || priceData.isEmpty()) {
+                System.out.println("⚠️ WARNUNG: Leere Price Data für " + symbol + " (" + type + ")");
+                throw new RuntimeException("Keine Preisdaten verfügbar für " + symbol);
+            }
+
+            result.put("success", true);
+            result.put("priceData", priceData);
+            System.out.println("✅ Success Result: " + result);
+
+        } catch (Exception e) {
+            System.out.println("❌ ERROR in getAssetWithCurrentPrice:");
+            System.out.println("Exception Type: " + e.getClass().getName());
+            System.out.println("Exception Message: " + e.getMessage());
+            e.printStackTrace();
+
+            result.put("success", false);
+            result.put("error", "Failed to fetch price for " + symbol + " (" + type + "): " + e.getMessage());
+            result.put("errorDetails", getErrorDetails(e));
+        }
+
+        System.out.println("🔚 Final Result: " + result);
+        return result;
+    }
+
     // ========== WATCHLIST MANAGEMENT ==========
 
     public CryptoWatchlist addToWatchlist(CryptoWatchlist asset) {
@@ -30,60 +98,6 @@ public class AssetService {
 
     public void removeFromWatchlist(Long id) {
         cryptoWatchlistRepository.deleteById(id);
-    }
-
-    // ========== CURRENT PRICE DATA ==========
-
-    /**
-     * Holt aktuelle Preisdaten mit Change-Informationen
-     */
-    public Map<String, Object> getAssetWithCurrentPrice(String symbol, String type, String market) {
-        Map<String, Object> result = new HashMap<>();
-
-        try {
-            if (!isValidSymbol(symbol, type)) {
-                throw new IllegalArgumentException("Invalid symbol for type " + type);
-            }
-
-            Map<String, Object> priceData = new HashMap<>();
-            if ("crypto".equalsIgnoreCase(type)) {
-                Map<String, Object> apiResponse = externalApiService.getCryptoCurrentPrice(symbol, market);
-                priceData = externalApiService.extractCurrentPrice(apiResponse, "crypto", symbol);
-                // Ensure we always have a price field
-                if (priceData.containsKey("close") && !priceData.containsKey("price")) {
-                    priceData.put("price", priceData.get("close"));
-                }
-            } else {
-                // Stock handling...
-            }
-
-            result.put("success", true);
-            result.put("priceData", priceData);
-
-        } catch (Exception e) {
-            result.put("success", false);
-            result.put("error", "Failed to fetch price: " + e.getMessage());
-            // Detailed error for debugging
-            result.put("errorDetails", getErrorDetails(e));
-        }
-
-        return result;
-    }
-
-    /**
-     * Extrahiert detaillierte Informationen aus einer Exception.
-     */
-    private String getErrorDetails(Exception e) {
-        StringBuilder details = new StringBuilder();
-        details.append("Exception: ").append(e.getClass().getName()).append("\n");
-        details.append("Message: ").append(e.getMessage()).append("\n");
-
-        // Stacktrace hinzufügen
-        for (StackTraceElement element : e.getStackTrace()) {
-            details.append("at ").append(element.toString()).append("\n");
-        }
-
-        return details.toString();
     }
 
     // ========== HISTORICAL DATA ==========
@@ -124,18 +138,12 @@ public class AssetService {
         return result;
     }
 
-    /**
-     * Überladene Methode für Rückwärtskompatibilität
-     */
     public Map<String, Object> getAssetPriceHistory(String symbol, String type, String market) {
         return getAssetPriceHistory(symbol, type, market, "daily", null);
     }
 
     // ========== MULTIPLE ASSETS ==========
 
-    /**
-     * Holt mehrere Assets mit aktuellen Preisen
-     */
     public Map<String, Object> getMultipleAssetsWithPrices(List<String> symbols, String type, String market) {
         Map<String, Object> result = new HashMap<>();
         Map<String, Object> assetsData = new HashMap<>();
@@ -161,20 +169,15 @@ public class AssetService {
 
     // ========== CHART DATA FORMATTING ==========
 
-    /**
-     * Formatiert Chart-Daten für Frontend
-     */
     public Map<String, Object> formatChartData(Map<String, Object> apiResponse, String type) {
         Map<String, Object> chartData = new HashMap<>();
 
         try {
             if ("crypto".equalsIgnoreCase(type)) {
-                // CoinGecko: prices als Liste von [timestamp, price]
                 @SuppressWarnings("unchecked")
                 List<List<Object>> prices = (List<List<Object>>) apiResponse.get("prices");
 
                 if (prices != null && !prices.isEmpty()) {
-                    // Umwandlung in Chart-freundliches Format
                     List<Map<String, Object>> chartPoints = prices.stream()
                             .map(pricePoint -> {
                                 Map<String, Object> point = new HashMap<>();
@@ -190,12 +193,10 @@ public class AssetService {
                 }
 
             } else if ("stock".equalsIgnoreCase(type)) {
-                // Twelve Data: values als Liste von Maps
                 @SuppressWarnings("unchecked")
                 List<Map<String, String>> values = (List<Map<String, String>>) apiResponse.get("values");
 
                 if (values != null && !values.isEmpty()) {
-                    // Umwandlung in Chart-freundliches Format
                     List<Map<String, Object>> chartPoints = values.stream()
                             .map(valuePoint -> {
                                 Map<String, Object> point = new HashMap<>();
@@ -227,23 +228,63 @@ public class AssetService {
     // ========== UTILITY METHODS ==========
 
     /**
-     * Validiert Asset-Symbol vor API-Aufruf
+     * 🔧 FIXED: Verbesserte Symbol-Validierung mit Asset-Type Detection
      */
     public boolean isValidSymbol(String symbol, String type) {
         if (symbol == null || symbol.trim().isEmpty()) {
             return false;
         }
 
-        // Basis-Validierung
+        String trimmed = symbol.trim().toUpperCase();
+
+        // Bekannte Krypto-Symbole
+        String[] cryptoSymbols = {"BTC", "ETH", "ADA", "DOT", "SOL", "MATIC", "LINK", "UNI", "AVAX", "ATOM"};
+        boolean isCryptoSymbol = java.util.Arrays.asList(cryptoSymbols).contains(trimmed);
+
         if ("crypto".equalsIgnoreCase(type)) {
-            // Für Krypto: prüfen ob Symbol bekannt ist oder als gültiger CoinGecko ID verwendet werden kann
+            // Für Krypto: Länge prüfen oder bekannte Symbole
             return symbol.length() >= 2 && symbol.length() <= 20;
         } else if ("stock".equalsIgnoreCase(type)) {
-            // Für Aktien: typische Ticker-Symbol Länge
+            // Warnung wenn Krypto-Symbol als Stock verwendet wird
+            if (isCryptoSymbol) {
+                System.out.println("⚠️ WARNING: " + symbol + " appears to be a CRYPTO symbol but type=stock was specified!");
+            }
             return symbol.length() >= 1 && symbol.length() <= 10;
         }
 
         return false;
+    }
+
+    /**
+     * 🔧 NEW: Auto-Detection des Asset-Typs
+     */
+    public String detectAssetType(String symbol) {
+        String[] cryptoSymbols = {"BTC", "ETH", "ADA", "DOT", "SOL", "MATIC", "LINK", "UNI", "AVAX", "ATOM"};
+        String trimmed = symbol.trim().toUpperCase();
+
+        if (java.util.Arrays.asList(cryptoSymbols).contains(trimmed)) {
+            return "crypto";
+        }
+
+        // Default zu stock für unbekannte Symbole
+        return "stock";
+    }
+
+    /**
+     * Extrahiert detaillierte Informationen aus einer Exception.
+     */
+    private String getErrorDetails(Exception e) {
+        StringBuilder details = new StringBuilder();
+        details.append("Exception: ").append(e.getClass().getName()).append("\n");
+        details.append("Message: ").append(e.getMessage()).append("\n");
+
+        // Top 5 Stack Trace Elements
+        StackTraceElement[] stackTrace = e.getStackTrace();
+        for (int i = 0; i < Math.min(5, stackTrace.length); i++) {
+            details.append("at ").append(stackTrace[i].toString()).append("\n");
+        }
+
+        return details.toString();
     }
 
     /**
