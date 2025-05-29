@@ -1,0 +1,99 @@
+<mxfile host="65bd71144e">
+    <diagram name="Crypto-ER-Diagram" id="crypto-er-diagram">
+        <mxGraphModel dx="695" dy="518" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="watchlist-table" value="crypto_watchlist" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;fillColor=#4285F4;fontColor=#FFFFFF;strokeColor=#000000;" parent="1" vertex="1">
+                    <mxGeometry x="65" y="70" width="240" height="200" as="geometry">
+                        <mxRectangle x="80" y="80" width="50" height="40" as="alternateBounds"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="watchlist-fields" value="+id (PK, bigint, auto_increment)&#xa;+name (varchar(255), NULL)&#xa;+notes (varchar(255), NULL)&#xa;+symbol (varchar(255), NULL)&#xa;+type (varchar(255), NULL)&#xa;+invested_amount (decimal(38,2), NULL)&#xa;  Default: 0.00&#xa;+created_at (datetime(6), NULL)" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="watchlist-table" vertex="1">
+                    <mxGeometry y="30" width="240" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="transaction-table" value="crypto_transaction" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;fillColor=#4285F4;fontColor=#FFFFFF;strokeColor=#000000;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="110" width="280" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="transaction-fields" value="+id (PK, bigint, auto_increment)&#xa;+amount (decimal(38,2), NULL)&#xa;+price_per_unit (decimal(38,2), NULL)&#xa;+total_value (decimal(38,2), NULL)&#xa;+transaction_date (datetime(6), NULL)&#xa;+transaction_type (enum(&#39;BUY&#39;,&#39;SELL&#39;), NULL)&#xa;+expense_id (FK, bigint, NULL, UNI)&#xa;+income_id (FK, bigint, NULL, UNI)&#xa;+watchlist_id (FK, bigint, NULL, MUL)&#xa;+created_at (datetime(6), NULL)" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="transaction-table" vertex="1">
+                    <mxGeometry y="30" width="280" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="income-table" value="income" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;fillColor=#4285F4;fontColor=#FFFFFF;strokeColor=#000000;" parent="1" vertex="1">
+                    <mxGeometry x="760" y="80" width="220" height="140" as="geometry"/>
+                </mxCell>
+                <mxCell id="income-fields" value="+id (PK, bigint, auto_increment)&#xa;+amount (decimal(38,2), NULL)&#xa;+date (date, NULL)&#xa;+source (varchar(255), NULL)" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="income-table" vertex="1">
+                    <mxGeometry y="30" width="220" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="expense-table" value="expense" style="swimlane;fontStyle=1;align=center;verticalAlign=top;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;fillColor=#4285F4;fontColor=#FFFFFF;strokeColor=#000000;" parent="1" vertex="1">
+                    <mxGeometry x="760" y="280" width="220" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="expense-fields" value="+id (PK, bigint, auto_increment)&#xa;+amount (decimal(38,2), NULL)&#xa;+category (varchar(255), NULL)&#xa;+date (date, NULL)&#xa;+description (varchar(255), NULL)" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;" parent="expense-table" vertex="1">
+                    <mxGeometry y="30" width="220" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="transaction-watchlist-relation" value="" style="endArrow=none;html=1;rounded=0;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;" parent="1" source="transaction-fields" target="watchlist-fields" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="500" y="400" as="sourcePoint"/>
+                        <mxPoint x="550" y="350" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="transaction-watchlist-n" value="N" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="370" y="270" width="20" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="transaction-watchlist-1" value="0..1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="315" y="170" width="30" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="transaction-income-relation" value="" style="endArrow=none;html=1;rounded=0;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;strokeWidth=2;" parent="1" source="transaction-fields" target="income-fields" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="500" y="300" as="sourcePoint"/>
+                        <mxPoint x="550" y="250" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="transaction-income-n" value="N" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="190" width="20" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="transaction-income-1" value="0..1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="720" y="140" width="40" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="transaction-expense-relation" value="" style="endArrow=none;html=1;rounded=0;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;strokeWidth=2;" parent="1" source="transaction-fields" target="expense-fields" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="500" y="400" as="sourcePoint"/>
+                        <mxPoint x="550" y="350" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="transaction-expense-n" value="N" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="290" width="20" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="transaction-expense-1" value="0..1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="725" y="380" width="30" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="380" width="280" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-title" value="Legende" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=16;" parent="1" vertex="1">
+                    <mxGeometry x="170" y="390" width="100" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-pk" value="PK = Primary Key (unterstrichen)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="420" width="200" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-fk" value="FK = Foreign Key (kursiv)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="440" width="200" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-uni" value="UNI = Unique Constraint (1:1 Beziehung)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="460" width="250" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-mul" value="MUL = Multiple (1:N Beziehung)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="480" width="250" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-solid" value="━━━ Erforderliche Beziehung" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="510" width="200" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="legend-dashed" value="- - - Optionale Beziehung" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="530" width="200" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="diagram-title" value="Database - ER Diagramm" style="text;html=1;strokeColor=none;fillColor=#E6F3FF;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontStyle=1;fontSize=18;fontColor=#4285F4;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="20" width="400" height="30" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
