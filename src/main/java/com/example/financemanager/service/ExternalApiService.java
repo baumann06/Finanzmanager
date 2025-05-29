@@ -201,7 +201,7 @@ public class ExternalApiService {
         mockResponse.put("change", change);
         mockResponse.put("change_percent", (change / basePrice) * 100);
 
-        System.out.println("⚠️ Using mock data for stock: " + symbol + " (Price: " + currentPrice + ")");
+        System.out.println("Using mock data for stock: " + symbol + " (Price: " + currentPrice + ")");
         return mockResponse;
     }
 
