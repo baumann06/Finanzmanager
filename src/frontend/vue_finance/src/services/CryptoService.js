@@ -210,6 +210,30 @@ export default {
         }
     },
 
+    async addInvestment(asset, investmentAmount) {
+        try {
+            const { corrected, detectedType } = this.validateAndCorrectSymbol(asset.symbol);
+            const response = await axios.post(`${API_URL}/investment`, {
+                symbol: corrected,
+                name: asset.name,
+                type: asset.type || detectedType,
+                investmentAmount: investmentAmount
+            });
+            return response;
+        } catch (error) {
+            this.handleApiError(error, 'Investition hinzufügen');
+        }
+    },
+
+    async getPortfolioSummary(watchlistId) {
+        try {
+            const response = await axios.get(`${API_URL}/watchlist/${watchlistId}/portfolio`);
+            return response;
+        } catch (error) {
+            this.handleApiError(error, 'Portfolio-Zusammenfassung laden');
+        }
+    },
+
     needsCorrection(symbol) {
         return symbol && Object.prototype.hasOwnProperty.call(this.symbolCorrections, symbol.toUpperCase().trim());
     },
