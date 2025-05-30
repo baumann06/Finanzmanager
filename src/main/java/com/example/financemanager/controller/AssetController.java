@@ -2,6 +2,7 @@ package com.example.financemanager.controller;
 
 import com.example.financemanager.dto.WatchlistDto;
 import com.example.financemanager.model.CryptoWatchlist;
+import com.example.financemanager.repository.CryptoWatchlistRepository;
 import com.example.financemanager.service.AssetService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +19,8 @@ public class AssetController {
 
     @Autowired
     private AssetService assetService;
+    @Autowired
+    private CryptoWatchlistRepository cryptoWatchlistRepository;
 
     // ========== WATCHLIST MANAGEMENT ==========
 

@@ -3,7 +3,10 @@ package com.example.financemanager.model;
 import jakarta.persistence.*;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -18,9 +21,12 @@ public class CryptoWatchlist {
     private String notes;
     private String type;
 
-    // NEUES FELD hinzufügen:
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @OneToMany(mappedBy = "watchlist", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<CryptoTransaction> transactions;
 
     // Konstruktoren
     public CryptoWatchlist() {
@@ -34,7 +40,88 @@ public class CryptoWatchlist {
         this.createdAt = LocalDateTime.now();
     }
 
-    // Bestehende Getter und Setter...
+    // === BERECHNETE FELDER (werden automatisch in JSON serialisiert) ===
+
+    /**
+     * Berechnet den gesamten investierten Betrag aus BUY-Transaktionen
+     */
+    @JsonProperty("investedAmount")
+    public BigDecimal getInvestedAmount() {
+        if (transactions == null || transactions.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        return transactions.stream()
+                .filter(t -> t.getTransactionType() == CryptoTransaction.TransactionType.BUY)
+                .map(t -> t.getAmount().multiply(t.getPricePerUnit()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Berechnet die gesamten Holdings (gekaufte Menge - verkaufte Menge)
+     */
+    @JsonProperty("totalHoldings")
+    public BigDecimal getTotalHoldings() {
+        if (transactions == null || transactions.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal buyAmount = transactions.stream()
+                .filter(t -> t.getTransactionType() == CryptoTransaction.TransactionType.BUY)
+                .map(CryptoTransaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal sellAmount = transactions.stream()
+                .filter(t -> t.getTransactionType() == CryptoTransaction.TransactionType.SELL)
+                .map(CryptoTransaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return buyAmount.subtract(sellAmount).setScale(8, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Berechnet den durchschnittlichen Kaufpreis
+     */
+    @JsonProperty("averageBuyPrice")
+    public BigDecimal getAverageBuyPrice() {
+        if (transactions == null || transactions.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        List<CryptoTransaction> buyTransactions = transactions.stream()
+                .filter(t -> t.getTransactionType() == CryptoTransaction.TransactionType.BUY)
+                .toList();
+
+        if (buyTransactions.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal totalValue = buyTransactions.stream()
+                .map(t -> t.getAmount().multiply(t.getPricePerUnit()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalAmount = buyTransactions.stream()
+                .map(CryptoTransaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (totalAmount.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO;
+        }
+
+        return totalValue.divide(totalAmount, 8, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Prüft ob das Asset eine aktive Investition hat
+     */
+    @JsonProperty("hasInvestment")
+    public boolean getHasInvestment() {
+        return getInvestedAmount().compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    // === STANDARD GETTER UND SETTER ===
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -50,24 +137,22 @@ public class CryptoWatchlist {
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
 
-    // NEUER Getter/Setter für createdAt:
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    @OneToMany(mappedBy = "watchlist", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JsonManagedReference
-    private List<CryptoTransaction> transactions;
 
     public List<CryptoTransaction> getTransactions() { return transactions; }
     public void setTransactions(List<CryptoTransaction> transactions) { this.transactions = transactions; }
 
-    // PrePersist für automatisches Setzen des Timestamps
+    // === LIFECYCLE METHODS ===
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
         }
     }
+
+    // === UTILITY METHODS ===
 
     @Override
     public String toString() {
@@ -78,6 +163,8 @@ public class CryptoWatchlist {
                 ", type='" + type + '\'' +
                 ", notes='" + notes + '\'' +
                 ", createdAt=" + createdAt +
+                ", investedAmount=" + getInvestedAmount() +
+                ", totalHoldings=" + getTotalHoldings() +
                 '}';
     }
 

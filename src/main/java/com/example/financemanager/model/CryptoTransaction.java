@@ -75,62 +75,12 @@ public class CryptoTransaction {
     public BigDecimal getTotalValue() { return totalValue; }
     public void setTotalValue(BigDecimal totalValue) { this.totalValue = totalValue; }
 
-    public LocalDateTime getTransactionDate() { return transactionDate; }
-    public void setTransactionDate(LocalDateTime transactionDate) { this.transactionDate = transactionDate; }
-
     public Expense getExpense() { return expense; }
     public void setExpense(Expense expense) { this.expense = expense; }
 
-    public Income getIncome() { return income; }
-    public void setIncome(Income income) { this.income = income; }
-
     public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
     public enum TransactionType {
         BUY, SELL
     }
 }
-
- /*
-
-@Entity
-public class CryptoTransaction {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    private String symbol;
-    private String type; // BUY, SELL
-    private Double amount;
-    private Double price;
-
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-
-    @ManyToOne
-    @JoinColumn(name = "watchlist_id")
-    @JsonBackReference
-    private CryptoWatchlist watchlist;
-
-    // Konstruktoren
-    public CryptoTransaction() {
-        this.createdAt = LocalDateTime.now();
-    }
-
-    // Alle Getter und Setter für price, createdAt etc.
-    public Double getPrice() { return price; }
-    public void setPrice(Double price) { this.price = price; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    @PrePersist
-    protected void onCreate() {
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
-        }
-    }
-}
-
-*/

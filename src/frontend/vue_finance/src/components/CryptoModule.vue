@@ -2,13 +2,14 @@
   <div>
     <h2>Watchlist</h2>
 
+    <!-- Asset hinzufügen Sektion -->
     <div class="add-asset-section">
       <h3>Asset zur Watchlist hinzufügen</h3>
       <div class="form">
         <input v-model="newAsset.symbol" placeholder="Symbol (z.B. BTC oder AAPL)" />
         <input v-model="newAsset.name" placeholder="Name (z.B. Bitcoin oder Apple)" />
 
-        <!-- Dropdown nur anzeigen, wenn symbol und name gesetzt sind -->
+        <!-- Typ-Dropdown nur bei vollständigen Eingaben anzeigen -->
         <div v-if="newAsset.symbol && newAsset.name" style="margin: 10px 0;">
           <label for="assetType">Typ wählen:</label>
           <select id="assetType" v-model="newAsset.type">
@@ -17,7 +18,7 @@
           </select>
         </div>
 
-        <!-- Investment Amount Field -->
+        <!-- Investitionsbetrag (optional) -->
         <div v-if="newAsset.symbol && newAsset.name" class="investment-section">
           <label for="investmentAmount">Investitionsbetrag (USD):</label>
           <input
@@ -38,118 +39,96 @@
       </div>
     </div>
 
+    <!-- Watchlist anzeigen -->
     <div v-if="watchlist.length > 0" class="watchlist-section">
       <h3>Meine Watchlist</h3>
       <div class="asset-cards">
         <div v-for="asset in watchlist" :key="asset.id" class="asset-card">
           <div class="card-header">
             <h4>{{ asset.name }} ({{ asset.symbol }}) - {{ asset.type === 'crypto' ? 'Krypto' : 'Aktie' }}</h4>
-            <button @click="removeFromWatchlist(asset.id)">Entfernen</button>
+            <button @click="removeFromWatchlist(asset)">Entfernen</button>
           </div>
 
-          <!-- Investment Information -->
-          <div v-if="asset.invested_amount && parseFloat(asset.invested_amount) > 0" class="investment-info">
+          <!-- Investment-Details (nur wenn investiert) -->
+          <div v-if="hasInvestment(asset)" class="investment-info">
             <div class="investment-summary">
-              <h5>💰 Investment Details</h5>
-              <p><strong>Investiert:</strong> ${{ formatPrice(asset.invested_amount) }}</p>
-
-              <!-- Portfolio Summary -->
-              <div v-if="portfolioSummaries[asset.id]" class="portfolio-details">
-                <div v-if="portfolioSummaries[asset.id].success">
-                  <p><strong>Aktueller Wert:</strong> ${{ formatPrice(portfolioSummaries[asset.id].data.currentValue) }}</p>
-                  <p><strong>Holdings:</strong> {{ formatHoldings(portfolioSummaries[asset.id].data.holdings) }} {{ asset.symbol }}</p>
-                  <p><strong>Gewinn/Verlust:</strong>
-                    <span :class="getChangeClass(portfolioSummaries[asset.id].data.gainLoss)">
-                      ${{ formatChange(portfolioSummaries[asset.id].data.gainLoss) }}
-                      ({{ formatChangePercent(portfolioSummaries[asset.id].data.gainLossPercent) }})
-                    </span>
-                  </p>
-                </div>
-                <div v-else class="error-info">
-                  <p>Portfolio-Fehler: {{ portfolioSummaries[asset.id].error }}</p>
-                  <button @click="fetchPortfolioSummary(asset)">Erneut laden</button>
-                </div>
-              </div>
-              <div v-else-if="isLoadingPortfolio(asset.id)" class="loading-info">
-                <p>Lade Portfolio-Daten...</p>
-              </div>
-              <div v-else>
-                <button @click="fetchPortfolioSummary(asset)">Portfolio laden</button>
-              </div>
+              <h5>Investment Details</h5>
+              <p><strong>Investiert:</strong> ${{ formatPrice(getInvestedAmount(asset)) }}</p>
+              <p><strong>Holdings:</strong> {{ formatHoldings(getTotalHoldings(asset)) }} {{ asset.symbol }}</p>
             </div>
           </div>
 
-          <!-- Price Information -->
-          <div v-if="assetPrices[asset.symbol]" class="price-info">
-            <div v-if="assetPrices[asset.symbol].success">
-              <p>Aktueller Preis: {{ formatPrice(assetPrices[asset.symbol].price) }} {{ asset.type === 'crypto' ? 'USD' : 'USD' }}</p>
-              <p v-if="assetPrices[asset.symbol].change !== undefined && assetPrices[asset.symbol].change !== null">24h Änderung:
-                <span :class="getChangeClass(assetPrices[asset.symbol].change)">
-                  {{ formatChange(assetPrices[asset.symbol].change) }}
-                </span>
-              </p>
-              <p v-if="assetPrices[asset.symbol].change_percent !== undefined && assetPrices[asset.symbol].change_percent !== null">24h Änderung %:
+          <!-- Preis-Informationen -->
+          <div class="price-info">
+            <div v-if="assetPrices[asset.symbol] && assetPrices[asset.symbol].success">
+              <p><strong>Aktueller Preis:</strong> ${{ formatPrice(assetPrices[asset.symbol].price) }}</p>
+              <p v-if="assetPrices[asset.symbol].change_percent"><strong>24h Änderung:</strong>
                 <span :class="getChangeClass(assetPrices[asset.symbol].change_percent)">
                   {{ formatChangePercent(assetPrices[asset.symbol].change_percent) }}
                 </span>
               </p>
+              <small v-if="assetPrices[asset.symbol].lastUpdated">
+                Zuletzt aktualisiert: {{ assetPrices[asset.symbol].lastUpdated }}
+              </small>
             </div>
-            <div v-else class="error-info">
+            <div v-else-if="assetPrices[asset.symbol] && assetPrices[asset.symbol].error" class="error-info">
               <p>Fehler beim Laden der Preisdaten: {{ assetPrices[asset.symbol].error }}</p>
-              <button @click="fetchAssetPrice(asset)">Erneut versuchen</button>
+              <button @click="fetchAssetPrice(asset)" class="retry-btn">Erneut versuchen</button>
+            </div>
+            <div v-else-if="isLoading(asset.symbol)" class="loading-info">
+              <p>Lade Preisdaten...</p>
+            </div>
+            <div v-else>
+              <button @click="fetchAssetPrice(asset)" class="load-btn">Preise laden</button>
             </div>
           </div>
 
-          <div v-else class="price-info">
-            <p v-if="isLoading(asset.symbol)">Lade Preisdaten...</p>
-            <div v-else class="error-info">
-              <p>Noch keine Preisdaten geladen</p>
-              <button @click="fetchAssetPrice(asset)">Preise laden</button>
-            </div>
-          </div>
-
-          <!-- Add Investment Button for existing assets -->
-          <div v-if="!asset.invested_amount || parseFloat(asset.invested_amount) === 0" class="add-investment">
+          <!-- Investment hinzufügen (nur wenn noch nicht investiert) -->
+          <div v-if="!hasInvestment(asset)" class="add-investment">
+            <h5>Investition hinzufügen</h5>
             <div class="investment-form">
-              <label>Investition hinzufügen:</label>
               <input
                   type="number"
                   step="0.01"
                   min="0"
                   v-model="investmentAmounts[asset.id]"
                   placeholder="Betrag in USD"
-                  style="margin: 5px 0; padding: 8px; width: 150px;"
+                  class="investment-input"
               />
               <button
                   @click="addInvestmentToAsset(asset)"
-                  :disabled="!investmentAmounts[asset.id] || parseFloat(investmentAmounts[asset.id]) <= 0 || isAddingInvestment[asset.id]"
-                  style="margin-left: 10px; padding: 8px 15px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                  :disabled="!canAddInvestment(asset)"
+                  class="invest-btn"
+                  :class="{ 'disabled': !canAddInvestment(asset) }"
               >
                 {{ isAddingInvestment[asset.id] ? 'Wird hinzugefügt...' : 'Investieren' }}
               </button>
             </div>
           </div>
 
+          <!-- Notizen -->
           <div class="notes">
-            <p><strong>Notizen:</strong></p>
-            <p>{{ asset.notes || 'Keine Notizen' }}</p>
+            <p><strong>Notizen:</strong> {{ asset.notes || 'Keine Notizen' }}</p>
           </div>
         </div>
       </div>
     </div>
 
+    <!-- Leere Watchlist -->
     <div v-else class="empty-state">
       <p>Deine Watchlist ist leer. Füge ein Asset hinzu!</p>
     </div>
   </div>
 </template>
+
 <script>
 import { ref, reactive, onMounted } from 'vue';
-import CryptoService from '../services/CryptoService';
+import CryptoService from '@/services/CryptoService';
 
 export default {
   name: 'CryptoModule',
   setup() {
+    // === REACTIVE STATE ===
     const watchlist = ref([]);
     const newAsset = reactive({
       symbol: '',
@@ -158,42 +137,211 @@ export default {
       notes: '',
       investmentAmount: null
     });
+
+    // Zustandsverwaltung für Preise und UI
     const assetPrices = ref({});
-    const selectedAsset = ref(null);
-    const priceHistory = ref([]);
     const loadingAssets = ref({});
-    const portfolioSummaries = ref({});
-    const loadingPortfolio = ref({});
     const investmentAmounts = ref({});
     const isAddingAsset = ref(false);
     const isAddingInvestment = ref({});
 
+    // === HELPER FUNCTIONS === (Updated to match backend data structure)
+
+    /**
+     * Prüft ob ein Asset eine Investition hat
+     */
+    const hasInvestment = (asset) => {
+      // Prüfe explizites hasInvestment Flag
+      if (asset.hasInvestment !== undefined) {
+        return asset.hasInvestment;
+      }
+
+      // Fallback: prüfe investedAmount (aus Console-Output sichtbar)
+      const invested = getInvestedAmount(asset);
+      return invested > 0;
+    };
+
+    /**
+     * Holt investierten Betrag - basierend auf Console-Output
+     */
+    const getInvestedAmount = (asset) => {
+      // Hauptfeld aus Backend (Console zeigt: investedAmount)
+      if (asset.investedAmount !== undefined) {
+        return parseFloat(asset.investedAmount) || 0;
+      }
+
+      // Fallback-Optionen
+      if (asset.invested_amount !== undefined) {
+        return parseFloat(asset.invested_amount) || 0;
+      }
+
+      return 0;
+    };
+
+    /**
+     * Holt Holdings - basierend auf Console-Output
+     */
+    const getTotalHoldings = (asset) => {
+      // Hauptfeld aus Backend (Console zeigt: totalHoldings)
+      if (asset.totalHoldings !== undefined) {
+        return parseFloat(asset.totalHoldings) || 0;
+      }
+
+      // Fallback für andere mögliche Feldnamen
+      if (asset.totalAmount !== undefined) {
+        return parseFloat(asset.totalAmount) || 0;
+      }
+
+      if (asset.total_holdings !== undefined) {
+        return parseFloat(asset.total_holdings) || 0;
+      }
+
+      return 0;
+    };
+
+    /**
+     * Holt durchschnittlichen Kaufpreis - basierend auf Console-Output
+     */
+    const getAverageBuyPrice = (asset) => {
+      // Hauptfeld aus Backend (Console zeigt: averageBuyPrice)
+      if (asset.averageBuyPrice !== undefined) {
+        return parseFloat(asset.averageBuyPrice) || 0;
+      }
+
+      // Fallback-Optionen
+      if (asset.averagePrice !== undefined) {
+        return parseFloat(asset.averagePrice) || 0;
+      }
+
+      if (asset.average_buy_price !== undefined) {
+        return parseFloat(asset.average_buy_price) || 0;
+      }
+
+      return 0;
+    };
+
+    /**
+     * Holt Transaktionsanzahl - basierend auf Console-Output
+     */
+    const getTransactionCount = (asset) => {
+      // Hauptfeld aus Backend (Console zeigt: transactionCount)
+      if (asset.transactionCount !== undefined) {
+        return parseInt(asset.transactionCount) || 0;
+      }
+
+      // Fallback-Optionen
+      if (asset.transaction_count !== undefined) {
+        return parseInt(asset.transaction_count) || 0;
+      }
+
+      return 0;
+    };
+
+    /**
+     * Berechnet aktuellen Wert der Holdings
+     */
+    const getCurrentValue = (asset) => {
+      const holdings = getTotalHoldings(asset);
+      const price = assetPrices.value[asset.symbol];
+
+      if (!holdings || !price || !price.success || !price.price) {
+        return 0;
+      }
+
+      return holdings * price.price;
+    };
+
+    /**
+     * Berechnet Gewinn/Verlust in absoluten Zahlen
+     */
+    const getProfitLoss = (asset) => {
+      const currentValue = getCurrentValue(asset);
+      const investedAmount = getInvestedAmount(asset);
+
+      return currentValue - investedAmount;
+    };
+
+    /**
+     * Berechnet Gewinn/Verlust in Prozent
+     */
+    const getProfitLossPercent = (asset) => {
+      const investedAmount = getInvestedAmount(asset);
+      const profitLoss = getProfitLoss(asset);
+
+      if (investedAmount === 0) return 0;
+
+      return (profitLoss / investedAmount) * 100;
+    };
+
+    /**
+     * Prüft ob eine Investition hinzugefügt werden kann
+     */
+    const canAddInvestment = (asset) => {
+      const amount = investmentAmounts.value[asset.id];
+      return amount && parseFloat(amount) > 0 && !isAddingInvestment.value[asset.id];
+    };
+
+    /**
+     * Behandelt API-Fehler einheitlich
+     */
+    const handleError = (error, context) => {
+      console.error(`${context} error:`, error);
+      let errorMessage = 'Unbekannter Fehler';
+
+      if (error.response && error.response.data) {
+        if (error.response.data.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      alert(`Fehler beim ${context}: ${errorMessage}`);
+    };
+
+    // === MAIN FUNCTIONS ===
+
+    /**
+     * Lädt die komplette Watchlist vom Server
+     */
     const fetchWatchlist = async () => {
       try {
-        console.log('Fetching watchlist...');
         const response = await CryptoService.getWatchlist();
         const assets = Array.isArray(response.data) ? response.data : [];
-        console.log('Received assets:', assets);
         watchlist.value = assets;
+
+        console.log('Loaded watchlist with calculated fields:', assets);
+
+        // Debug-Ausgabe für jedes Asset
+        assets.forEach((asset, index) => {
+          console.log(`Asset ${index}:`, {
+            symbol: asset.symbol,
+            name: asset.name,
+            investedAmount: asset.investedAmount,
+            totalHoldings: asset.totalHoldings,
+            averageBuyPrice: asset.averageBuyPrice,
+            transactionCount: asset.transactionCount,
+            hasInvestment: hasInvestment(asset)
+          });
+        });
+
+        // Preise für alle Assets laden
         assets.forEach(asset => {
           if (asset.symbol) {
             fetchAssetPrice(asset);
-            if (asset.invested_amount && parseFloat(asset.invested_amount) > 0) {
-              fetchPortfolioSummary(asset);
-            }
           }
         });
       } catch (error) {
-        console.error('Error loading watchlist:', error);
-        const errorMessage = (error.response && error.response.data && error.response.data.message) ||
-            (error.response && error.response.data && error.response.data.error) ||
-            error.message ||
-            'Unknown error';
-        alert('Fehler beim Laden der Watchlist: ' + errorMessage);
+        handleError(error, 'Laden der Watchlist');
         watchlist.value = [];
       }
     };
 
+    /**
+     * Fügt neues Asset zur Watchlist hinzu
+     */
     const addToWatchlist = async () => {
       if (!newAsset.symbol || !newAsset.name) {
         alert('Bitte geben Sie Symbol und Name ein.');
@@ -214,30 +362,26 @@ export default {
             ? parseFloat(newAsset.investmentAmount)
             : null;
 
-        console.log('Adding asset:', assetToAdd, 'with investment:', investmentAmount);
-
+        // Asset mit oder ohne Investition hinzufügen
         if (investmentAmount) {
           await CryptoService.addInvestment(assetToAdd, investmentAmount);
         } else {
           await CryptoService.addToWatchlist(assetToAdd);
         }
 
-        console.log('Asset added successfully');
-        await fetchWatchlist();
+        await fetchWatchlist(); // Lädt neue berechnete Werte
         resetForm();
 
       } catch (error) {
-        console.error('Error adding asset:', error);
-        const errorMessage = (error.response && error.response.data && error.response.data.message) ||
-            (error.response && error.response.data && error.response.data.error) ||
-            error.message ||
-            'Unknown error';
-        alert('Fehler beim Hinzufügen zur Watchlist: ' + errorMessage);
+        handleError(error, 'Hinzufügen zur Watchlist');
       } finally {
         isAddingAsset.value = false;
       }
     };
 
+    /**
+     * Fügt Investition zu bestehendem Asset hinzu
+     */
     const addInvestmentToAsset = async (asset) => {
       const amount = investmentAmounts.value[asset.id];
       if (!amount || parseFloat(amount) <= 0) {
@@ -248,253 +392,179 @@ export default {
       isAddingInvestment.value[asset.id] = true;
 
       try {
-        console.log('Adding investment to asset:', asset, 'amount:', amount);
         await CryptoService.addInvestment(asset, parseFloat(amount));
-        console.log('Investment added successfully');
-
-        await fetchWatchlist();
+        await fetchWatchlist(); // Lädt aktualisierte berechnete Werte
         investmentAmounts.value[asset.id] = null;
-
       } catch (error) {
-        console.error('Error adding investment:', error);
-        const errorMessage = (error.response && error.response.data && error.response.data.message) ||
-            (error.response && error.response.data && error.response.data.error) ||
-            error.message ||
-            'Unknown error';
-        alert('Fehler beim Hinzufügen der Investition: ' + errorMessage);
+        handleError(error, 'Hinzufügen der Investition');
       } finally {
         isAddingInvestment.value[asset.id] = false;
       }
     };
 
-    const fetchPortfolioSummary = async (asset) => {
-      loadingPortfolio.value[asset.id] = true;
-
-      try {
-        const response = await CryptoService.getPortfolioSummary(asset.id);
-        portfolioSummaries.value[asset.id] = {
-          success: true,
-          data: response.data
-        };
-      } catch (error) {
-        console.error('Error loading portfolio summary:', error);
-        const errorMessage = (error.response && error.response.data && error.response.data.message) ||
-            (error.response && error.response.data && error.response.data.error) ||
-            error.message ||
-            'Unknown error';
-        portfolioSummaries.value[asset.id] = {
-          success: false,
-          error: errorMessage
-        };
-      } finally {
-        loadingPortfolio.value[asset.id] = false;
-      }
-    };
-
-    const resetForm = () => {
-      newAsset.symbol = '';
-      newAsset.name = '';
-      newAsset.type = 'crypto';
-      newAsset.notes = '';
-      newAsset.investmentAmount = null;
-    };
-
-    const removeFromWatchlist = async (id) => {
-      try {
-        console.log('Removing asset with id:', id);
-        await CryptoService.removeFromWatchlist(id);
-        console.log('Asset removed successfully');
-
-        const removedAsset = watchlist.value.find(asset => asset.id === id);
-        if (removedAsset) {
-          delete assetPrices.value[removedAsset.symbol];
-          delete loadingAssets.value[removedAsset.symbol];
-          delete portfolioSummaries.value[id];
-          delete loadingPortfolio.value[id];
-          delete investmentAmounts.value[id];
-          delete isAddingInvestment.value[id];
-        }
-
-        await fetchWatchlist();
-
-      } catch (error) {
-        console.error('Error removing asset:', error);
-        const errorMessage = (error.response && error.response.data && error.response.data.message) ||
-            (error.response && error.response.data && error.response.data.error) ||
-            error.message ||
-            'Unknown error';
-        alert('Fehler beim Entfernen aus der Watchlist: ' + errorMessage);
-      }
-    };
-
-    const fetchAssetPrice = async (asset) => {
-      if (!(asset && asset.symbol)) {
-        console.error('Invalid asset provided to fetchAssetPrice');
+    /**
+     * Entfernt Asset aus der Watchlist
+     */
+    const removeFromWatchlist = async (asset) => {
+      if (!confirm(`Möchten Sie "${asset.name}" (${asset.symbol}) wirklich aus der Watchlist entfernen?`)) {
         return;
       }
+
+      try {
+        await CryptoService.removeFromWatchlist(asset.id);
+        await fetchWatchlist();
+      } catch (error) {
+        handleError(error, 'Entfernen aus der Watchlist');
+      }
+    };
+
+    /**
+     * Lädt aktuellen Preis für ein Asset
+     */
+    const fetchAssetPrice = async (asset) => {
+      if (loadingAssets.value[asset.symbol]) return;
 
       loadingAssets.value[asset.symbol] = true;
 
       try {
-        console.log(`Fetching price for ${asset.symbol} as ${asset.type}`);
-        const response = await CryptoService.getAssetPriceAuto(asset.symbol, asset.type);
+        console.log(`Fetching price for ${asset.symbol}...`);
+        const response = await CryptoService.getAssetPriceAuto(asset.symbol);
+        console.log(`Price response for ${asset.symbol}:`, response.data);
 
-        if (!(response.data && response.data.success) || !response.data.priceData) {
-          throw new Error((response.data && response.data.error) || 'API returned unsuccessful response');
-        }
-
-        const priceData = response.data.priceData;
-        if (typeof priceData.price === 'undefined') {
-          throw new Error('No valid price data in response');
-        }
-
+        // Speichere nur den Preis-Wert
         assetPrices.value[asset.symbol] = {
-          success: true,
-          price: parseFloat(priceData.price),
-          change: priceData.change ? parseFloat(priceData.change) : null,
-          change_percent: priceData.change_percent ? parseFloat(priceData.change_percent) : null,
-          lastUpdated: new Date().toLocaleTimeString()
+          price: response.data.priceData.price,
+          success: true
         };
-
-        console.log(`Successfully loaded price for ${asset.symbol}`);
-
       } catch (error) {
-        console.error(`Price fetch error for ${asset.symbol}:`, error);
+        console.error(`Error fetching price for ${asset.symbol}:`, error);
         assetPrices.value[asset.symbol] = {
           success: false,
-          error: getErrorMessage(error),
-          lastRetry: new Date().toLocaleTimeString()
+          error: error.message || 'Preis nicht verfügbar'
         };
       } finally {
         loadingAssets.value[asset.symbol] = false;
       }
     };
 
-    const showHistory = async (asset) => {
-      if (selectedAsset.value && selectedAsset.value.symbol === asset.symbol) {
-        selectedAsset.value = null;
-        priceHistory.value = [];
-        return;
-      }
-
-      selectedAsset.value = asset;
-      priceHistory.value = [];
-
-      try {
-        console.log(`Loading history for ${asset.symbol} (${asset.type})`);
-        const response = await CryptoService.getAssetHistory(asset.symbol, asset.type);
-
-        if (!(response.data && response.data.success) || !response.data.historyData) {
-          throw new Error('No history data available');
-        }
-
-        const historyData = response.data.historyData;
-
-        if (asset.type === 'crypto') {
-          const prices = historyData.prices;
-          if (prices && Array.isArray(prices)) {
-            priceHistory.value = prices.slice(0, 7).map((item) => ({
-              date: new Date(item[0]).toLocaleDateString('de-DE'),
-              price: item[1],
-              close: item[1]
-            }));
-          }
-        } else if (asset.type === 'stock') {
-          const values = historyData.values;
-          if (values && Array.isArray(values)) {
-            priceHistory.value = values.slice(0, 7).map(item => ({
-              date: item.datetime,
-              close: parseFloat(item.close),
-              price: parseFloat(item.close)
-            }));
-          }
-        }
-
-        console.log(`Loaded ${priceHistory.value.length} history points for ${asset.symbol}`);
-
-      } catch (error) {
-        console.error(`History fetch error for ${asset.symbol}:`, error);
-        alert('Fehler beim Laden der Kursverlaufsdaten: ' + getErrorMessage(error));
-        priceHistory.value = [];
-      }
+    /**
+     * Setzt das Formular zurück
+     */
+    const resetForm = () => {
+      Object.assign(newAsset, {
+        symbol: '',
+        name: '',
+        type: 'crypto',
+        notes: '',
+        investmentAmount: null
+      });
     };
 
-    const getErrorMessage = (error) => {
-      return (error.response && error.response.data && error.response.data.error) ||
-          (error.response && error.response.data && error.response.data.message) ||
-          error.message ||
-          'Unknown error';
-    };
+    // === UTILITY FUNCTIONS ===
 
     const isLoading = (symbol) => loadingAssets.value[symbol] || false;
-    const isLoadingPortfolio = (assetId) => loadingPortfolio.value[assetId] || false;
 
+    /**
+     * Formatiert Preise für die Anzeige
+     */
     const formatPrice = (price) => {
       if (!price || isNaN(price)) return '0.00';
-      return parseFloat(price).toFixed(2);
+      return parseFloat(price).toLocaleString('de-DE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
     };
 
+    /**
+     * Formatiert Holdings für die Anzeige
+     */
     const formatHoldings = (holdings) => {
       if (!holdings || isNaN(holdings)) return '0.00000000';
       return parseFloat(holdings).toFixed(8);
     };
 
+    /**
+     * Formatiert Änderungen für die Anzeige
+     */
     const formatChange = (change) => {
       if (!change || isNaN(change)) return '0.00';
-      const cleanChange = change.toString().replace('%', '');
-      const numericChange = parseFloat(cleanChange);
+      const numericChange = parseFloat(change);
       return (numericChange >= 0 ? '+' : '') + numericChange.toFixed(2);
     };
 
+    /**
+     * Formatiert prozentuale Änderungen
+     */
     const formatChangePercent = (changePercent) => {
       if (!changePercent || isNaN(changePercent)) return '0.00%';
-      const numericChange = parseFloat(changePercent.toString().replace('%', ''));
+      const numericChange = parseFloat(changePercent);
       return (numericChange >= 0 ? '+' : '') + numericChange.toFixed(2) + '%';
     };
 
+    /**
+     * Bestimmt CSS-Klasse basierend auf Änderung (positiv/negativ)
+     */
     const getChangeClass = (change) => {
       if (!change || isNaN(change)) return '';
-      const numericChange = parseFloat(change.toString().replace('%', ''));
-      return numericChange >= 0 ? 'positive-change' : 'negative-change';
+      const numericChange = parseFloat(change);
+      if (numericChange > 0) return 'positive-change';
+      if (numericChange < 0) return 'negative-change';
+      return '';
     };
 
-    const calculateBarHeight = (price) => {
-      if (!price || isNaN(price)) return 10;
-      const scaledHeight = Math.max(parseFloat(price) * 0.1, 10);
-      return Math.min(scaledHeight, 200);
+    /**
+     * Bestimmt CSS-Klasse für Gewinn/Verlust
+     */
+    const getProfitLossClass = (asset) => {
+      const profitLoss = getProfitLoss(asset);
+      if (profitLoss > 0) return 'positive-change';
+      if (profitLoss < 0) return 'negative-change';
+      return '';
     };
 
+    // === LIFECYCLE ===
     onMounted(() => {
       fetchWatchlist();
     });
 
+    // === RETURN ===
     return {
+      // State
       watchlist,
       newAsset,
       assetPrices,
-      selectedAsset,
-      priceHistory,
       loadingAssets,
-      portfolioSummaries,
-      loadingPortfolio,
       investmentAmounts,
       isAddingAsset,
       isAddingInvestment,
+
+      // Helper functions
+      hasInvestment,
+      getInvestedAmount,
+      getTotalHoldings,
+      getAverageBuyPrice,
+      getTransactionCount,
+      getCurrentValue,
+      getProfitLoss,
+      getProfitLossPercent,
+      canAddInvestment,
+
+      // Main functions
       fetchWatchlist,
       addToWatchlist,
       addInvestmentToAsset,
-      fetchPortfolioSummary,
       removeFromWatchlist,
       fetchAssetPrice,
-      showHistory,
+      resetForm,
+
+      // Utility functions
       isLoading,
-      isLoadingPortfolio,
       formatPrice,
       formatHoldings,
       formatChange,
       formatChangePercent,
       getChangeClass,
-      calculateBarHeight
+      getProfitLossClass
     };
   }
 };
@@ -502,78 +572,53 @@ export default {
 
 <style scoped>
 .add-asset-section {
-  background: #f5f5f5;
+  background: #f8f9fa;
   padding: 20px;
   border-radius: 8px;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  max-width: 500px;
+  gap: 10px;
 }
 
-.form input,
-.form select,
-.form textarea {
-  padding: 12px;
+.form input, .form textarea, .form select {
+  padding: 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
-  font-size: 14px;
 }
 
 .form button {
-  padding: 12px 20px;
-  background-color: #007bff;
+  padding: 10px;
+  background: #007bff;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
 }
 
-.form button:hover:not(:disabled) {
-  background-color: #0056b3;
+.form button:hover {
+  background: #0056b3;
 }
 
 .form button:disabled {
-  background-color: #6c757d;
+  background: #6c757d;
   cursor: not-allowed;
-}
-
-.investment-section {
-  border: 1px solid #e0e0e0;
-  padding: 15px;
-  border-radius: 4px;
-  background: white;
-}
-
-.investment-section label {
-  font-weight: 500;
-  margin-bottom: 5px;
-  display: block;
-}
-
-.investment-section small {
-  color: #666;
-  font-style: italic;
 }
 
 .asset-cards {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
   gap: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
 }
 
 .asset-card {
   border: 1px solid #ddd;
   border-radius: 8px;
-  padding: 20px;
+  padding: 15px;
   background: white;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .card-header {
@@ -592,89 +637,110 @@ export default {
   background: #dc3545;
   color: white;
   border: none;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
 }
 
 .investment-info {
-  background: #f8f9fa;
-  padding: 15px;
+  background: #e8f5e8;
+  padding: 10px;
   border-radius: 6px;
   margin-bottom: 15px;
 }
 
 .investment-summary h5 {
   margin: 0 0 10px 0;
-  color: #495057;
+  color: #155724;
 }
 
-.portfolio-details {
+.performance-info {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid #c3e6c3;
 }
 
 .price-info {
-  background: #e9ecef;
-  padding: 12px;
+  background: #f8f9fa;
+  padding: 10px;
   border-radius: 6px;
-  margin-bottom: 15px;
+  margin: 10px 0;
 }
 
 .error-info {
-  color: #dc3545;
-  font-size: 14px;
-}
-
-.error-info button {
-  background: #ffc107;
-  color: #212529;
-  border: none;
-  padding: 4px 8px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 12px;
-  margin-top: 5px;
+  background: #f8d7da;
+  color: #721c24;
 }
 
 .loading-info {
-  color: #6c757d;
-  font-style: italic;
+  background: #fff3cd;
+  color: #856404;
+}
+
+.retry-btn, .load-btn {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 5px;
 }
 
 .add-investment {
-  background: #e8f5e8;
-  padding: 15px;
+  background: #e3f2fd;
+  padding: 10px;
   border-radius: 6px;
-  margin-bottom: 15px;
+  margin: 10px 0;
 }
 
 .investment-form {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  align-items: center;
 }
 
-.investment-form label {
-  font-weight: 500;
-  color: #495057;
+.investment-input {
+  flex: 1;
+  padding: 5px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.invest-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 5px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.invest-btn.disabled {
+  background: #6c757d;
+  cursor: not-allowed;
 }
 
 .notes {
+  margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid #eee;
 }
 
-.notes p {
-  margin: 5px 0;
+.positive-change {
+  color: #28a745;
+  font-weight: bold;
+}
+
+.negative-change {
+  color: #dc3545;
+  font-weight: bold;
 }
 
 .empty-state {
   text-align: center;
-  padding: 40px;
   color: #6c757d;
   font-style: italic;
+  padding: 40px;
 }
 </style>
