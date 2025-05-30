@@ -121,6 +121,7 @@ public class ExternalApiService {
                 "&include_24hr_change=true";
 
         try {
+            // Sendet die HTTP-GET-Anfrage und erwartet eine Antwort als Map
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
 
             if (response == null || response.isEmpty()) {
