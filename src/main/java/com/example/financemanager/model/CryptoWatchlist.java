@@ -10,29 +10,45 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 
+// Diese Klasse repräsentiert eine Krypto-Watchlist, also eine Sammlung von beobachteten oder gehandelten Kryptowährungen
 @Entity
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"}) // Ignoriere technische Hibernate-Felder bei der JSON-Ausgabe
 public class CryptoWatchlist {
+
+    // Eindeutige ID (automatisch generiert)
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    // Kürzel der Kryptowährung, z. B. BTC
     private String symbol;
+
+    // Vollständiger Name, z. B. Bitcoin
     private String name;
+
+    // Notizen zur Kryptowährung
     private String notes;
+
+    // Typ der Währung (z. B. Coin oder Token)
     private String type;
 
+    // Zeitpunkt der Erstellung
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    // Liste aller Transaktionen, die zu dieser Watchlist gehören
     @OneToMany(mappedBy = "watchlist", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    @JsonManagedReference
+    @JsonManagedReference // Ermöglicht JSON-Ausgabe (Gegenstück zu @JsonBackReference)
     private List<CryptoTransaction> transactions;
 
-    // Konstruktoren
+    // === KONSTRUKTOREN ===
+
+    // Leerer Konstruktor, setzt Erstellungszeitpunkt auf jetzt
     public CryptoWatchlist() {
         this.createdAt = LocalDateTime.now();
     }
 
+    // Konstruktor zum Anlegen einer Watchlist mit Symbol, Name und Typ
     public CryptoWatchlist(String symbol, String name, String type) {
         this.symbol = symbol;
         this.name = name;
@@ -40,16 +56,14 @@ public class CryptoWatchlist {
         this.createdAt = LocalDateTime.now();
     }
 
-    // === BERECHNETE FELDER (werden automatisch in JSON serialisiert) ===
+    // === BERECHNETE FELDER ===
 
     /**
-     * Berechnet den gesamten investierten Betrag aus BUY-Transaktionen
+     * Gibt den insgesamt investierten Betrag aus allen BUY-Transaktionen zurück
      */
     @JsonProperty("investedAmount")
     public BigDecimal getInvestedAmount() {
-        if (transactions == null || transactions.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
+        if (transactions == null || transactions.isEmpty()) return BigDecimal.ZERO;
 
         return transactions.stream()
                 .filter(t -> t.getTransactionType() == CryptoTransaction.TransactionType.BUY)
@@ -59,13 +73,11 @@ public class CryptoWatchlist {
     }
 
     /**
-     * Berechnet die gesamten Holdings (gekaufte Menge - verkaufte Menge)
+     * Gibt die gesamte gehaltene Menge (Käufe - Verkäufe) zurück
      */
     @JsonProperty("totalHoldings")
     public BigDecimal getTotalHoldings() {
-        if (transactions == null || transactions.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
+        if (transactions == null || transactions.isEmpty()) return BigDecimal.ZERO;
 
         BigDecimal buyAmount = transactions.stream()
                 .filter(t -> t.getTransactionType() == CryptoTransaction.TransactionType.BUY)
@@ -81,21 +93,17 @@ public class CryptoWatchlist {
     }
 
     /**
-     * Berechnet den durchschnittlichen Kaufpreis
+     * Durchschnittlicher Kaufpreis über alle BUY-Transaktionen
      */
     @JsonProperty("averageBuyPrice")
     public BigDecimal getAverageBuyPrice() {
-        if (transactions == null || transactions.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
+        if (transactions == null || transactions.isEmpty()) return BigDecimal.ZERO;
 
         List<CryptoTransaction> buyTransactions = transactions.stream()
                 .filter(t -> t.getTransactionType() == CryptoTransaction.TransactionType.BUY)
                 .toList();
 
-        if (buyTransactions.isEmpty()) {
-            return BigDecimal.ZERO;
-        }
+        if (buyTransactions.isEmpty()) return BigDecimal.ZERO;
 
         BigDecimal totalValue = buyTransactions.stream()
                 .map(t -> t.getAmount().multiply(t.getPricePerUnit()))
@@ -105,15 +113,13 @@ public class CryptoWatchlist {
                 .map(CryptoTransaction::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        if (totalAmount.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO;
-        }
+        if (totalAmount.compareTo(BigDecimal.ZERO) == 0) return BigDecimal.ZERO;
 
         return totalValue.divide(totalAmount, 8, RoundingMode.HALF_UP);
     }
 
     /**
-     * Prüft ob das Asset eine aktive Investition hat
+     * Gibt an, ob eine Investition (Kauf) getätigt wurde
      */
     @JsonProperty("hasInvestment")
     public boolean getHasInvestment() {
@@ -138,13 +144,12 @@ public class CryptoWatchlist {
     public void setType(String type) { this.type = type; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 
     public List<CryptoTransaction> getTransactions() { return transactions; }
-    public void setTransactions(List<CryptoTransaction> transactions) { this.transactions = transactions; }
 
-    // === LIFECYCLE METHODS ===
+    // === LIFECYCLE-METHODE ===
 
+    // Wird aufgerufen, bevor das Objekt gespeichert wird
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
@@ -152,7 +157,7 @@ public class CryptoWatchlist {
         }
     }
 
-    // === UTILITY METHODS ===
+    // === HILFSMETHODEN ===
 
     @Override
     public String toString() {

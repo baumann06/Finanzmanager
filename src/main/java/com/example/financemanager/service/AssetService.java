@@ -17,8 +17,23 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Service-Klasse für Asset-Management (Kryptowährungen und Aktien).
+ * Bietet Funktionalitäten für:
+ * - Preisdaten-Abfrage (aktuell und historisch)
+ * - Watchlist-Verwaltung
+ * - Portfolio-Management und -Analyse
+ * - Investment-Tracking
+ * - Asset-Suche und -Discovery
+ *
+ * @author [Your Name]
+ * @version 1.0
+ * @since 2024
+ */
 @Service
 public class AssetService {
+
+    // ========== DEPENDENCIES ==========
 
     @Autowired
     private CryptoWatchlistRepository cryptoWatchlistRepository;
@@ -34,10 +49,20 @@ public class AssetService {
 
     // ========== PRICE DATA METHODS ==========
 
+    /**
+     * Ruft den aktuellen Preis für ein bestimmtes Asset ab.
+     * Unterstützt sowohl Kryptowährungen als auch Aktien.
+     *
+     * @param symbol Das Asset-Symbol (z.B. "BTC", "AAPL")
+     * @param type Der Asset-Typ ("crypto" oder "stock")
+     * @param market Der Zielmarkt für die Preisabfrage (Standard: "usd")
+     * @return Map mit Preisdaten oder Fehlermeldung
+     */
     public Map<String, Object> getAssetWithCurrentPrice(String symbol, String type, String market) {
         Map<String, Object> result = new HashMap<>();
 
         try {
+            // Validiere das Asset-Symbol basierend auf dem Typ
             if (!isValidSymbol(symbol, type)) {
                 throw new IllegalArgumentException("Invalid symbol '" + symbol + "' for type '" + type + "'");
             }
@@ -45,9 +70,12 @@ public class AssetService {
             Map<String, Object> priceData;
             String targetMarket = market != null ? market : "usd";
 
+            // Behandle verschiedene Asset-Typen unterschiedlich
             if ("crypto".equalsIgnoreCase(type)) {
                 Map<String, Object> apiResponse = externalApiService.getCryptoCurrentPrice(symbol, targetMarket);
                 priceData = externalApiService.extractCurrentPrice(apiResponse, "crypto", symbol);
+
+                // Normalisiere die Preisdaten (verschiedene APIs verwenden unterschiedliche Feldnamen)
                 if (priceData.containsKey("close") && !priceData.containsKey("price")) {
                     priceData.put("price", priceData.get("close"));
                 }
@@ -58,6 +86,7 @@ public class AssetService {
                 throw new IllegalArgumentException("Unbekannter Asset-Typ: '" + type + "'");
             }
 
+            // Prüfe ob Preisdaten verfügbar sind
             if (priceData == null || priceData.isEmpty()) {
                 throw new RuntimeException("Keine Preisdaten verfügbar für " + symbol);
             }
@@ -66,6 +95,7 @@ public class AssetService {
             result.put("priceData", priceData);
 
         } catch (Exception e) {
+            // Erstelle detaillierte Fehler-Response
             result.put("success", false);
             result.put("error", "Failed to fetch price for " + symbol + " (" + type + "): " + e.getMessage());
             result.put("errorDetails", getErrorDetails(e));
@@ -74,18 +104,31 @@ public class AssetService {
         return result;
     }
 
+    /**
+     * Ruft Preisdaten für multiple Assets gleichzeitig ab.
+     * Nützlich für Batch-Operationen und Dashboard-Updates.
+     *
+     * @param symbols Liste der Asset-Symbole
+     * @param type Asset-Typ für alle Symbole
+     * @param market Zielmarkt für Preisabfrage
+     * @return Map mit Preisdaten für alle Assets und Statistiken
+     */
     public Map<String, Object> getMultipleAssetsWithPrices(List<String> symbols, String type, String market) {
         Map<String, Object> assetsData = new HashMap<>();
         int successCount = 0;
 
+        // Verarbeite jedes Symbol einzeln (parallelisierbar in Zukunft)
         for (String symbol : symbols) {
             try {
                 Map<String, Object> assetData = getAssetWithCurrentPrice(symbol, type, market);
                 assetsData.put(symbol, assetData);
+
+                // Zähle erfolgreiche Abfragen für Statistiken
                 if ((Boolean) assetData.get("success")) {
                     successCount++;
                 }
             } catch (Exception e) {
+                // Fehlerbehandlung pro Asset (ein Fehler stoppt nicht die anderen)
                 Map<String, Object> errorData = new HashMap<>();
                 errorData.put("error", e.getMessage());
                 errorData.put("success", false);
@@ -93,6 +136,7 @@ public class AssetService {
             }
         }
 
+        // Erstelle zusammenfassende Statistiken
         Map<String, Object> result = new HashMap<>();
         result.put("assets", assetsData);
         result.put("totalCount", symbols.size());
@@ -102,6 +146,17 @@ public class AssetService {
         return result;
     }
 
+    /**
+     * Ruft historische Preisdaten für ein Asset ab.
+     * Unterstützt sowohl Intraday- als auch Daily-Daten.
+     *
+     * @param symbol Asset-Symbol
+     * @param type Asset-Typ
+     * @param market Zielmarkt
+     * @param period Zeitraum ("intraday" oder "daily")
+     * @param interval Intervall für Intraday-Daten (z.B. "5min")
+     * @return Map mit historischen Preisdaten
+     */
     public Map<String, Object> getAssetPriceHistory(String symbol, String type, String market, String period, String interval) {
         Map<String, Object> result = new HashMap<>();
 
@@ -109,6 +164,7 @@ public class AssetService {
             Map<String, Object> apiResponse;
             String targetMarket = market != null ? market : "usd";
 
+            // Wähle entsprechende API-Methode basierend auf Asset-Typ und Zeitraum
             if ("crypto".equalsIgnoreCase(type)) {
                 apiResponse = "intraday".equalsIgnoreCase(period)
                         ? externalApiService.getCryptoIntradayData(symbol, targetMarket)
@@ -132,25 +188,40 @@ public class AssetService {
         return result;
     }
 
+    /**
+     * Überladene Methode für historische Preisdaten mit Standardparametern.
+     * Verwendet "daily" als Standard-Zeitraum.
+     */
     public Map<String, Object> getAssetPriceHistory(String symbol, String type, String market) {
         return getAssetPriceHistory(symbol, type, market, "daily", null);
     }
 
     // ========== WATCHLIST MANAGEMENT ==========
 
+    /**
+     * Fügt ein neues Asset zur Watchlist hinzu.
+     * Führt Validierung und Duplikatsprüfung durch.
+     *
+     * @param asset Das CryptoWatchlist-Objekt mit Asset-Informationen
+     * @return Gespeichertes CryptoWatchlist-Objekt
+     * @throws IllegalArgumentException bei ungültigen Daten oder Duplikaten
+     */
     public CryptoWatchlist addToWatchlist(CryptoWatchlist asset) {
-        // Validierung vor dem Speichern
+        // Basis-Validierung
         if (asset.getSymbol() == null || asset.getSymbol().trim().isEmpty()) {
             throw new IllegalArgumentException("Symbol ist erforderlich");
         }
 
-        // Prüfe auf Duplikate
+        // Duplikatsprüfung (case-insensitive)
         Optional<CryptoWatchlist> existing = cryptoWatchlistRepository.findBySymbolIgnoreCase(asset.getSymbol().trim());
         if (existing.isPresent()) {
             throw new IllegalArgumentException("Asset " + asset.getSymbol() + " ist bereits in der Watchlist");
         }
 
+        // Normalisiere Symbol (Großbuchstaben)
         asset.setSymbol(asset.getSymbol().trim().toUpperCase());
+
+        // Auto-Erkennung des Asset-Typs falls nicht angegeben
         if (asset.getType() == null || asset.getType().trim().isEmpty()) {
             asset.setType(detectAssetType(asset.getSymbol()));
         }
@@ -158,25 +229,40 @@ public class AssetService {
         return cryptoWatchlistRepository.save(asset);
     }
 
+    /**
+     * Ruft die komplette Watchlist ab.
+     *
+     * @return Liste aller Watchlist-Einträge
+     */
     public List<CryptoWatchlist> getWatchlist() {
         return cryptoWatchlistRepository.findAll();
     }
 
     /**
-     * Gibt Watchlist als DTOs zurück (verhindert Zirkularreferenzen)
+     * Ruft die Watchlist als DTOs ab.
+     * DTOs verhindern zirkuläre Referenzen bei der JSON-Serialisierung
+     * und enthalten berechnete Felder wie investierte Beträge.
+     *
+     * @return Liste von WatchlistDto-Objekten
      */
     public List<WatchlistDto> getWatchlistDtos() {
         List<CryptoWatchlist> entities = cryptoWatchlistRepository.findAll();
+
+        // Debug-Ausgabe (sollte in Production entfernt werden)
         System.out.println("------------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
         System.out.println("Watchlist Entities: ");
         System.out.println(entities);
+
         return entities.stream()
                 .map(this::convertToDto)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Einzelnes Watchlist-Item als DTO abrufen
+     * Ruft ein einzelnes Watchlist-Item als DTO ab.
+     *
+     * @param id ID des Watchlist-Items
+     * @return WatchlistDto oder null falls nicht gefunden
      */
     public WatchlistDto getWatchlistItemDto(Long id) {
         Optional<CryptoWatchlist> entity = cryptoWatchlistRepository.findById(id);
@@ -184,7 +270,12 @@ public class AssetService {
     }
 
     /**
-     * Watchlist-Item aktualisieren
+     * Aktualisiert ein bestehendes Watchlist-Item.
+     * Nur bestimmte Felder können aktualisiert werden (Name, Notizen).
+     *
+     * @param id ID des zu aktualisierenden Items
+     * @param updatedAsset Objekt mit neuen Werten
+     * @return Aktualisiertes CryptoWatchlist-Objekt oder null falls nicht gefunden
      */
     public CryptoWatchlist updateWatchlistItem(Long id, CryptoWatchlist updatedAsset) {
         Optional<CryptoWatchlist> existingOpt = cryptoWatchlistRepository.findById(id);
@@ -194,23 +285,29 @@ public class AssetService {
 
         CryptoWatchlist existing = existingOpt.get();
 
-        // Aktualisiere nur erlaubte Felder
+        // Aktualisiere nur erlaubte Felder (Symbol und Type sind normalerweise unveränderlich)
         if (updatedAsset.getName() != null) {
             existing.setName(updatedAsset.getName().trim());
         }
         if (updatedAsset.getNotes() != null) {
             existing.setNotes(updatedAsset.getNotes());
         }
-        // Symbol und Type sollten normalerweise nicht geändert werden
 
         return cryptoWatchlistRepository.save(existing);
     }
 
     /**
-     * Öffentliche Methode für DTO-Konvertierung (für Controller)
+     * Konvertiert eine CryptoWatchlist-Entity zu einem DTO.
+     * Berechnet dabei investierte Beträge, Durchschnittspreise und weitere Metriken
+     * basierend auf zugehörigen Transaktionen.
+     *
+     * @param entity Die zu konvertierende Entity
+     * @return WatchlistDto mit berechneten Feldern
      */
     public WatchlistDto convertToDto(CryptoWatchlist entity) {
         WatchlistDto dto = new WatchlistDto();
+
+        // Basis-Felder kopieren
         dto.setId(entity.getId());
         dto.setSymbol(entity.getSymbol());
         dto.setName(entity.getName());
@@ -218,12 +315,13 @@ public class AssetService {
         dto.setNotes(entity.getNotes());
         dto.setCreatedAt(entity.getCreatedAt());
 
-        // Berechne investierte Beträge aus Transaktionen
+        // Berechne investierte Beträge und Mengen aus allen Transaktionen
         if (entity.getTransactions() != null && !entity.getTransactions().isEmpty()) {
             BigDecimal totalInvested = BigDecimal.ZERO;
             BigDecimal totalAmount = BigDecimal.ZERO;
             int transactionCount = 0;
 
+            // Verarbeite alle Transaktionen (BUY addiert, SELL subtrahiert)
             for (CryptoTransaction transaction : entity.getTransactions()) {
                 if (transaction.getTransactionType() == CryptoTransaction.TransactionType.BUY) {
                     totalInvested = totalInvested.add(transaction.getTotalValue() != null ?
@@ -243,12 +341,13 @@ public class AssetService {
             dto.setTotalAmount(totalAmount);
             dto.setTransactionCount(transactionCount);
 
-            // Berechne Durchschnittspreis wenn Menge > 0
+            // Berechne Durchschnittspreis (nur wenn Menge > 0)
             if (totalAmount.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal avgPrice = totalInvested.divide(totalAmount, 8, RoundingMode.HALF_UP);
                 dto.setAveragePrice(avgPrice);
             }
         } else {
+            // Standardwerte für Assets ohne Transaktionen
             dto.setInvestedAmount(BigDecimal.ZERO);
             dto.setTotalAmount(BigDecimal.ZERO);
             dto.setTransactionCount(0);
@@ -257,15 +356,24 @@ public class AssetService {
         return dto;
     }
 
+    /**
+     * Entfernt ein Asset aus der Watchlist.
+     *
+     * TODO: Implementiere Transaktionsprüfung (auskommentiert)
+     * um zu verhindern, dass Assets mit Transaktionen gelöscht werden.
+     *
+     * @param id ID des zu löschenden Assets
+     * @return true wenn erfolgreich gelöscht, false wenn nicht gefunden
+     */
     public boolean removeFromWatchlist(Long id) {
         if (cryptoWatchlistRepository.existsById(id)) {
-            /* Prüfe ob Transaktionen existieren
+            /*
+            // Sicherheitsprüfung: Verhindere Löschung wenn Transaktionen existieren
             List<CryptoTransaction> transactions = cryptoTransactionRepository.findByWatchlistId(id);
             if (!transactions.isEmpty()) {
                 throw new IllegalStateException("Watchlist-Item kann nicht gelöscht werden, da Transaktionen vorhanden sind");
             }
-
-             */
+            */
 
             cryptoWatchlistRepository.deleteById(id);
             return true;
@@ -274,7 +382,10 @@ public class AssetService {
     }
 
     /**
-     * Watchlist mit aktuellen Preisen anreichern
+     * Ruft die Watchlist mit aktuellen Preisen und berechneten Performance-Metriken ab.
+     * Diese Methode kombiniert Watchlist-Daten mit Live-Preisen für eine vollständige Übersicht.
+     *
+     * @return Map mit angereicherter Watchlist und Statistiken
      */
     public Map<String, Object> getWatchlistWithCurrentPrices() {
         Map<String, Object> result = new HashMap<>();
@@ -283,12 +394,13 @@ public class AssetService {
             List<WatchlistDto> watchlistDtos = getWatchlistDtos();
             List<Map<String, Object>> enrichedWatchlist = new ArrayList<>();
 
+            // Bearbeite jedes Watchlist-Item
             for (WatchlistDto dto : watchlistDtos) {
                 Map<String, Object> enrichedItem = new HashMap<>();
                 enrichedItem.put("watchlistItem", dto);
 
                 try {
-                    // Hole aktuellen Preis
+                    // Hole aktuellen Preis für das Asset
                     Map<String, Object> priceResponse = getAssetWithCurrentPrice(
                             dto.getSymbol(), dto.getType(), "usd");
 
@@ -297,7 +409,7 @@ public class AssetService {
                         Map<String, Object> priceData = (Map<String, Object>) priceResponse.get("priceData");
                         enrichedItem.put("currentPrice", priceData);
 
-                        // Berechne aktuelle Performance
+                        // Berechne Performance-Metriken nur wenn Investitionen vorhanden
                         if (dto.getInvestedAmount() != null && dto.getTotalAmount() != null &&
                                 dto.getTotalAmount().compareTo(BigDecimal.ZERO) > 0) {
 
@@ -312,6 +424,7 @@ public class AssetService {
                             enrichedItem.put("profitPercentage", profitPercentage);
                         }
                     } else {
+                        // Speichere Preisfehler für einzelne Assets
                         enrichedItem.put("priceError", priceResponse.get("error"));
                     }
                 } catch (Exception e) {
@@ -335,10 +448,18 @@ public class AssetService {
 
     // ========== PORTFOLIO MANAGEMENT ==========
 
+    /**
+     * Berechnet den Portfolio-Prozentsatz für ein bestimmtes Watchlist-Item.
+     * Zeigt an, welchen Anteil dieses Asset am Gesamtportfolio hat.
+     *
+     * @param watchlistId ID des Watchlist-Items
+     * @return Map mit Portfolio-Statistiken
+     */
     public Map<String, Object> getPortfolioPercentage(Long watchlistId) {
         Map<String, Object> result = new HashMap<>();
 
         try {
+            // Prüfe ob Watchlist-Item existiert
             Optional<CryptoWatchlist> watchlistOpt = cryptoWatchlistRepository.findById(watchlistId);
             if (watchlistOpt.isEmpty()) {
                 result.put("error", "Watchlist-Item nicht gefunden");
@@ -346,6 +467,7 @@ public class AssetService {
                 return result;
             }
 
+            // Berechne investierte Summen basierend auf Transaktionen
             List<CryptoTransaction> transactions = cryptoTransactionRepository.findByWatchlistId(watchlistId);
             BigDecimal totalInvested = BigDecimal.ZERO;
             BigDecimal totalAmount = BigDecimal.ZERO;
@@ -360,7 +482,7 @@ public class AssetService {
                 }
             }
 
-            // Berechne Portfolio-Prozentsatz im Vergleich zu Gesamtportfolio
+            // Berechne Portfolio-Prozentsatz im Verhältnis zum Gesamtportfolio
             BigDecimal totalPortfolioValue = getTotalPortfolioValue();
             BigDecimal portfolioPercentage = BigDecimal.ZERO;
 
@@ -384,7 +506,11 @@ public class AssetService {
     }
 
     /**
-     * Gesamte Portfolio-Übersicht
+     * Erstellt eine umfassende Portfolio-Übersicht mit allen Assets,
+     * aktuellen Bewertungen und Performance-Metriken.
+     * Diese Methode ist ideal für Dashboard-Ansichten.
+     *
+     * @return Map mit vollständiger Portfolio-Analyse
      */
     public Map<String, Object> getPortfolioOverview() {
         Map<String, Object> result = new HashMap<>();
@@ -395,9 +521,12 @@ public class AssetService {
             BigDecimal totalCurrentValue = BigDecimal.ZERO;
             List<Map<String, Object>> portfolioItems = new ArrayList<>();
 
+            // Verarbeite nur Assets mit tatsächlichen Investitionen
             for (WatchlistDto dto : watchlistDtos) {
                 if (dto.getInvestedAmount() != null && dto.getInvestedAmount().compareTo(BigDecimal.ZERO) > 0) {
                     Map<String, Object> portfolioItem = new HashMap<>();
+
+                    // Basis-Informationen
                     portfolioItem.put("symbol", dto.getSymbol());
                     portfolioItem.put("name", dto.getName());
                     portfolioItem.put("type", dto.getType());
@@ -420,6 +549,7 @@ public class AssetService {
                             portfolioItem.put("currentPrice", currentPrice);
                             portfolioItem.put("currentValue", currentValue);
 
+                            // Berechne Gewinn/Verlust
                             BigDecimal profit = currentValue.subtract(dto.getInvestedAmount());
                             BigDecimal profitPercentage = profit.divide(dto.getInvestedAmount(), 4, RoundingMode.HALF_UP)
                                     .multiply(new BigDecimal("100"));
@@ -430,6 +560,7 @@ public class AssetService {
                             totalCurrentValue = totalCurrentValue.add(currentValue);
                         }
                     } catch (Exception e) {
+                        // Einzelne Preisfehler sollen das Gesamtergebnis nicht beeinträchtigen
                         portfolioItem.put("priceError", e.getMessage());
                     }
 
@@ -437,7 +568,7 @@ public class AssetService {
                 }
             }
 
-            // Berechne Portfolio-Prozentsätze
+            // Berechne Portfolio-Verteilung (Prozentsätze)
             for (Map<String, Object> item : portfolioItems) {
                 BigDecimal invested = (BigDecimal) item.get("investedAmount");
                 if (totalInvested.compareTo(BigDecimal.ZERO) > 0) {
@@ -447,6 +578,7 @@ public class AssetService {
                 }
             }
 
+            // Berechne Gesamtperformance
             BigDecimal totalProfit = totalCurrentValue.subtract(totalInvested);
             BigDecimal totalProfitPercentage = BigDecimal.ZERO;
             if (totalInvested.compareTo(BigDecimal.ZERO) > 0) {
@@ -470,6 +602,11 @@ public class AssetService {
         return result;
     }
 
+    /**
+     * Berechnet den Gesamtwert des Portfolios basierend auf allen Kauf-Transaktionen.
+     *
+     * @return Gesamter investierter Betrag
+     */
     private BigDecimal getTotalPortfolioValue() {
         List<CryptoTransaction> allTransactions = cryptoTransactionRepository.findAll();
         return allTransactions.stream()
@@ -480,16 +617,30 @@ public class AssetService {
 
     // ========== INVESTMENT MANAGEMENT ==========
 
+    /**
+     * Erstellt eine neue Investition durch Kauf eines Assets zum aktuellen Marktpreis.
+     * Diese Methode kombiniert mehrere Operationen:
+     * 1. Preisabfrage
+     * 2. Watchlist-Erstellung/-Update
+     * 3. Expense-Eintrag
+     * 4. Transaction-Eintrag
+     *
+     * @param symbol Asset-Symbol
+     * @param name Asset-Name (optional)
+     * @param type Asset-Typ
+     * @param investmentAmount Zu investierender Betrag
+     * @return Map mit Investitionsergebnissen
+     */
     public Map<String, Object> addInvestment(String symbol, String name, String type, BigDecimal investmentAmount) {
         Map<String, Object> result = new HashMap<>();
 
         try {
-            // Validierung
+            // Validierung des Investitionsbetrags
             if (investmentAmount.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new IllegalArgumentException("Investment-Betrag muss größer als 0 sein");
             }
 
-            // Hole aktuellen Preis
+            // Hole aktuellen Preis für die Berechnung der gekauften Menge
             Map<String, Object> priceResponse = getAssetWithCurrentPrice(symbol, type, "usd");
             if (!(Boolean) priceResponse.get("success")) {
                 return createErrorResponse("Konnte aktuellen Preis nicht abrufen", null);
@@ -499,13 +650,14 @@ public class AssetService {
             Map<String, Object> priceData = (Map<String, Object>) priceResponse.get("priceData");
             BigDecimal currentPrice = new BigDecimal(priceData.get("price").toString());
 
-            // Erstelle oder finde Watchlist-Item
+            // Erstelle oder finde bestehendes Watchlist-Item
             CryptoWatchlist watchlistItem;
             Optional<CryptoWatchlist> existingOpt = cryptoWatchlistRepository.findBySymbolIgnoreCase(symbol);
 
             if (existingOpt.isPresent()) {
                 watchlistItem = existingOpt.get();
             } else {
+                // Erstelle neues Watchlist-Item
                 watchlistItem = new CryptoWatchlist();
                 watchlistItem.setSymbol(symbol.toUpperCase());
                 watchlistItem.setName(name != null ? name : symbol);

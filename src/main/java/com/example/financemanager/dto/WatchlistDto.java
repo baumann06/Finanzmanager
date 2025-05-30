@@ -23,31 +23,6 @@ public class WatchlistDto {
         this.transactionCount = 0;
     }
 
-    // Konstruktor mit Grunddaten
-    public WatchlistDto(Long id, String symbol, String name, String type, String notes) {
-        this();
-        this.id = id;
-        this.symbol = symbol;
-        this.name = name;
-        this.type = type;
-        this.notes = notes;
-    }
-
-    // Vollständiger Konstruktor mit createdAt
-    public WatchlistDto(Long id, String symbol, String name, String type, String notes,
-                        BigDecimal investedAmount, BigDecimal totalAmount, Integer transactionCount,
-                        LocalDateTime createdAt) {
-        this.id = id;
-        this.symbol = symbol;
-        this.name = name;
-        this.type = type;
-        this.notes = notes;
-        this.investedAmount = investedAmount != null ? investedAmount : BigDecimal.ZERO;
-        this.totalAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
-        this.transactionCount = transactionCount != null ? transactionCount : 0;
-        this.createdAt = createdAt;
-    }
-
     // Alle Getters und Setters...
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -61,7 +36,6 @@ public class WatchlistDto {
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
 
-    public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
 
     public BigDecimal getInvestedAmount() { return investedAmount; }
@@ -74,21 +48,17 @@ public class WatchlistDto {
         this.totalAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
     }
 
-    public Integer getTransactionCount() { return transactionCount; }
     public void setTransactionCount(Integer transactionCount) {
         this.transactionCount = transactionCount != null ? transactionCount : 0;
-    }
-
-    public BigDecimal getAveragePrice() {
-        return averagePrice;
     }
 
     public void setAveragePrice(BigDecimal averagePrice) {
         this.averagePrice = averagePrice != null ? averagePrice : BigDecimal.ZERO;
     }
 
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
 
     @Override
     public String toString() {
@@ -124,6 +94,4 @@ public class WatchlistDto {
         result = 31 * result + (type != null ? type.hashCode() : 0);
         return result;
     }
-
-
 }
