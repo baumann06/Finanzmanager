@@ -323,7 +323,8 @@ export default {
             totalHoldings: asset.totalHoldings,
             averageBuyPrice: asset.averageBuyPrice,
             transactionCount: asset.transactionCount,
-            hasInvestment: hasInvestment(asset)
+            hasInvestment: hasInvestment(asset),
+            notes: asset.notes || 'Keine Notizen'
           });
         });
 
