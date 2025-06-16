@@ -160,7 +160,7 @@ public class ExternalApiService {
             }
         }
 
-        // Fallback-Kette wenn TwelveData nicht verfügbar oder fehlschlägt
+        // wenn TwelveData nicht verfügbar oder fehlschlägt
         return getAlternativeStockPrice(symbol);
     }
 

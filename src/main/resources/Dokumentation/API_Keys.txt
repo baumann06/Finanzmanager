@@ -1,7 +1,7 @@
 Alpha Vantage: https://www.alphavantage.co/
-Key: J23ZY20YSGXA91CU
+Key: 
 
 coincap.io: https://pro.coincap.io/dashboard
-Key: 59c5d2c3458d016bab4cf8580bae251d2420bd0de7a0eccdf591ab6ecdfa5e8a
+Key:
 
 
