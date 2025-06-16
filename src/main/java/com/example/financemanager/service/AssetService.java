@@ -26,9 +26,6 @@ import java.util.stream.Collectors;
  * - Investment-Tracking
  * - Asset-Suche und -Discovery
  *
- * @author [Your Name]
- * @version 1.0
- * @since 2024
  */
 @Service
 public class AssetService {
